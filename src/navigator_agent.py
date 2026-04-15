@@ -60,7 +60,7 @@ class NavigatorAgent(agent.Agent):
             # saving the photo
             img_data = base64.b64decode(msg.body)
 
-            photos_dir = os.path.join(os.getcwd(), "received_photos")
+            photos_dir  = os.path.join(os.getcwd(), "received_photos")
             os.makedirs(photos_dir, exist_ok=True)
 
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
