@@ -55,14 +55,14 @@ class ReceiverAgent(agent.Agent):
             msg.body = "Requesting photo"
             await self.send(msg)
 
-            now = datetime.datetime.now()
+            request_time = datetime.datetime.now()
 
-            logger.info(f"Request for photo sent at {now}")
+            logger.info(f"Request for photo sent at {request_time}")
 
             msg = await self.receive(timeout=9999)
             if msg:
-                new_now = datetime.datetime.now()
-                logger.info(f"Time to get the picture: {new_now - now}")
+                receive_time = datetime.datetime.now()
+                logger.info(f"Time to get the picture: {receive_time - request_time}")
 
                 # Decodes base64 into raw bytes
                 img_data = base64.b64decode(msg.body)
@@ -72,7 +72,7 @@ class ReceiverAgent(agent.Agent):
                 os.makedirs(photos_dir, exist_ok=True)
 
                 # Generate filename with timestamp
-                timestamp = new_now.strftime("%Y%m%d_%H%M%S")
+                timestamp = receive_time.strftime("%Y%m%d_%H%M%S")
                 filename = f"photo_{timestamp}.jpg"
                 filepath = os.path.join(photos_dir, filename)
 
