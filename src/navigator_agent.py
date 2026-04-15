@@ -1,3 +1,14 @@
+"""
+    Listener agent that waits for a path request from a robot,
+    fetches a picture from the camera agent
+    computes a path
+    returns it to the robot
+
+    Based on the camera_receiver by Berk Buzcu
+"""
+
+
+
 import os
 import asyncio
 import logging

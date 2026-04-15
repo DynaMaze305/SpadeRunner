@@ -1,3 +1,12 @@
+"""
+    Runner function from the  navigator agent that waits for a path request from a robot,
+    fetches a picture from the camera agent
+    computes a path
+    returns it to the robot
+
+    Based on the runner.py by Berk Buzcu
+"""
+
 import os
 import asyncio
 import logging
