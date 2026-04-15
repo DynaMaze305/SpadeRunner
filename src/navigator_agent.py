@@ -7,8 +7,6 @@
     Based on the camera_receiver by Berk Buzcu
 """
 
-
-
 import os
 import asyncio
 import logging
@@ -21,6 +19,7 @@ from spade import agent, behaviour
 from spade.message import Message
 from pathfinding import compute_path
 
+# Set up logging to track program execution
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 

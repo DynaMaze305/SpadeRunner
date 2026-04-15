@@ -5,11 +5,12 @@ import os
 import datetime
 from spade import agent, behaviour
 from spade.message import Message
+
+# Set up logging to track program execution
 import logging
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
 
 class ReceiverAgent(agent.Agent):
     class RequestPhotoBehaviour(behaviour.OneShotBehaviour):
@@ -19,6 +20,7 @@ class ReceiverAgent(agent.Agent):
             msg.set_metadata("performative", "request")
             msg.body = "Requesting photo"
 
+            # sending the Photo request
             await self.send(msg)
 
             logger.info(f"Request for photo sent at {datetime.datetime.now()}")
@@ -27,15 +29,19 @@ class ReceiverAgent(agent.Agent):
             if msg:
                 logger.info(f"Received photo at {datetime.datetime.now()}")
 
+                # Decodes base64 into raw bytes
                 img_data = base64.b64decode(msg.body)
 
+                # Create directory if it doesn't exist
                 photos_dir = os.path.join(os.getcwd(), "received_photos")
                 os.makedirs(photos_dir, exist_ok=True)
 
+                # Generate filename with timestamp
                 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                 filename = f"photo_{timestamp}.jpg"
                 filepath = os.path.join(photos_dir, filename)
 
+                # Save the received image
                 async with aiofiles.open(filepath, "wb") as img_file:
                     await img_file.write(img_data)
 
@@ -56,9 +62,9 @@ class ReceiverAgent(agent.Agent):
             msg = await self.receive(timeout=9999)
             if msg:
                 new_now = datetime.datetime.now()
-                # logger.info(f"Received photo at {new_now}")
                 logger.info(f"Time to get the picture: {new_now - now}")
 
+                # Decodes base64 into raw bytes
                 img_data = base64.b64decode(msg.body)
 
                 # Create directory if it doesn't exist
@@ -80,7 +86,6 @@ class ReceiverAgent(agent.Agent):
         print(f"{self.jid} is ready.")
         self.add_behaviour(self.RequestPhotoBehaviour())
         # self.add_behaviour(self.ReceivePhotoBehaviour())
-
 
 async def main():
     xmpp_server = os.getenv("XMPP_SERVER", "localhost")
