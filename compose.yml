@@ -12,5 +12,5 @@ services:
     environment:
       - XMPP_JID=client@isc-coordinator.lan
       - XMPP_PASSWORD=plsnohack 
-      - ROBOT_RECIPIENT=alpha-pi-zero-agent@prosody
-      - ROBOT_INSTRUCTIONS=forward,backward,left,right,stop
+      - ROBOT_RECIPIENT=alphabot21-agent@isc-coordinator.lan
+      - ROBOT_INSTRUCTIONS=forward,backward,left,right,stop,photo

@@ -3,7 +3,7 @@ import time
 import logging
 import argparse
 from spade.agent import Agent
-from spade.behaviour import OneShotBehaviour, PeriodicBehaviour
+from spade.behaviour import OneShotBehaviour, PeriodicBehaviour, CyclicBehaviour
 from spade.message import Message
 
 # Configure logging
@@ -50,8 +50,32 @@ class AlphabotController(Agent):
                 logger.info("All instructions sent. Stopping behavior.")
                 self.kill()
 
+    class ReceivePhotoBehaviour(CyclicBehaviour):
+        async def run(self):
+            print("Waiting for photo message...")
+            msg = await self.receive(timeout=9999)
+            if msg:
+                print("Received photo message.")
+                img_data = base64.b64decode(msg.body)
+
+                # Create directory if it doesn't exist
+                photos_dir = os.path.join(os.getcwd(), "received_photos")
+                os.makedirs(photos_dir, exist_ok=True)
+
+                # Generate filename with timestamp
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"photo_{timestamp}.jpg"
+                filepath = os.path.join(photos_dir, filename)
+
+                # Save the received image
+                async with aiofiles.open(filepath, "wb") as img_file:
+                    await img_file.write(img_data)
+
+                print(f"Photo saved as '{filepath}'.")
+
     async def setup(self):
         logger.info("XMPP Client agent started")
+        self.add_behaviour(self.ReceivePhotoBehaviour())
 
 async def main():
     xmpp_jid = os.getenv("XMPP_JID")
