@@ -30,10 +30,17 @@ class NavigatorAgent(agent.Agent):
 
             # idle waiting for request
             logger.info("Waiting for any robot to request a path")
-            request = await self.receive()
+            request = await self.receive(timeout=9999)
+
+            if request is None:
+                return
 
             robot_jid = str(request.sender)
-            logger.info(f"Robot {robot_jid} requested path: {request}")
+            if request.body == "request path":
+                logger.info(f"Robot {robot_jid} requested path: {request}")
+            else:
+                logger.warning(f"Unknown incoming request: {request.body} from jid: {robot_jid}")
+                return
 
             # asking for a photo to the coordinator
             msg = Message(to="camera_agent@isc-coordinator.lan")

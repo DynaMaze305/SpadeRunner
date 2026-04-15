@@ -10,5 +10,7 @@ services:
     volumes:
       - .:/app
     network_mode: "host"
+    extra_hosts:
+      - "isc-coordinator.lan:192.168.88.250"
     env_file:
       - .env
