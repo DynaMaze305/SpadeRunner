@@ -57,7 +57,7 @@ class NavigatorAgent(agent.Agent):
             logger.info("Received a photo from camera_agent")
 
             # saving the photo
-            img_data = base64.b64decode(msg.body)
+            img_data = base64.b64decode(photo_request.body)
 
             photos_dir  = os.path.join(os.getcwd(), "received_photos")
             os.makedirs(photos_dir, exist_ok=True)
