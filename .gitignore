@@ -45,3 +45,4 @@ coverage.xml
 *.swo 
 
 received_photos/*
+calibration_photos/*
