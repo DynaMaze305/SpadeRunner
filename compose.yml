@@ -7,10 +7,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    volumes:
-      - .:/app
+
     network_mode: "host"
     extra_hosts:
       - "isc-coordinator.lan:192.168.88.250"
     env_file:
       - .env
+    volumes:
+      - ./received_photos:/app/received_photos
+      - ./calibration_photos:/app/calibration_photos

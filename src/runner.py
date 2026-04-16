@@ -44,6 +44,10 @@ async def run_camera_receiver():
     return receiver
 
 async def main():
+
+    logger.error("_____STARTING MAIN ______")
+
+
     os.makedirs("received_photos", exist_ok=True)
     
     # alphabot_controller = await run_alphabot_controller()
