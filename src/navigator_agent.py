@@ -23,6 +23,7 @@ from pathfinding import compute_path
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Agent that waits for a path request
 class NavigatorAgent(agent.Agent):
     class NavigateBehaviour(behaviour.CyclicBehaviour):
         async def run(self):
@@ -48,6 +49,8 @@ class NavigatorAgent(agent.Agent):
 
             await self.send(msg)
             logger.info("Requested a photo from the camera_agent at isc-coordinator.lan")
+
+            # Waits for the picture
             photo_request = await self.receive(timeout=30)
 
             if not photo_request:
@@ -59,9 +62,11 @@ class NavigatorAgent(agent.Agent):
             # saving the photo
             img_data = base64.b64decode(photo_request.body)
 
+            # Create a directory for photo storage if non existant
             photos_dir  = os.path.join(os.getcwd(), "received_photos")
             os.makedirs(photos_dir, exist_ok=True)
 
+            # Saves the picture with timestamp
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"photo_{timestamp}.jpg"
             filepath = os.path.join(photos_dir, filename)
@@ -71,17 +76,17 @@ class NavigatorAgent(agent.Agent):
 
             print(f"Photo saved as '{filepath}'.")
 
-            # Should compute the path
-
+            # Placeholder TODO: Impleemnt the path computation (OpenCV)
             computed_path = compute_path(img_data)
 
+            # Sends the computed path back to the agent who requested it
             reply = Message(to=robot_jid)
             reply.set_metadata("performative", "response")
             reply.body = computed_path
             await self.send(reply)
             logger.info(f"Path returned to the robot, with length {len(reply.body)}")
 
-
+    # Registering the behaviour to the pool
     async def setup(self):
         logger.info(f"The navigator agent is ready to be used")
         self.add_behaviour(self.NavigateBehaviour())
