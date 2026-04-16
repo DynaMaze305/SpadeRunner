@@ -1,2 +1,6 @@
 spade==3.3.3
 aiofiles==23.2.1
+numpy==2.2.6
+opencv-python==4.13.0.92
+pillow==12.2.0
+matplotlib==3.10.5
