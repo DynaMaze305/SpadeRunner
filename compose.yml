@@ -10,7 +10,7 @@ services:
 
     network_mode: "host"
     extra_hosts:
-      - "isc-coordinator.lan:192.168.88.250"
+      - "isc-coordinator.lan:192.168.88.245"
     env_file:
       - .env
     volumes:

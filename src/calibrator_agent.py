@@ -45,7 +45,7 @@ class CalibratorAgent(agent.Agent):
             logger.info(f"[{label}] photo requested from {CAMERA_JID}")
 
             # Waiting for a reply
-            reply = await self.receive(timeout=15)
+            reply = await self.receive(timeout=45)
             if reply is None:
                 logger.error(f"[{label}] no photo received")
                 return None
@@ -61,6 +61,7 @@ class CalibratorAgent(agent.Agent):
             # Requesting a photo
             img = await self.request_photo(f"step {step_id}")
             if img is None:
+                logger.info(f"NO image for step {step_id}")
                 return None
             now = datetime.datetime.now()
 
@@ -68,13 +69,15 @@ class CalibratorAgent(agent.Agent):
             image_path = await save_bytes(img, f"{step_id}.jpg", CALIBRATION_DIR)
 
             # Measuring angle with OpenCV
-            measured_angle = detect_qr_angle(img)
-            if measured_angle is None:
-                logger.warning(f"[step {step_id}] no QR code detected")
-                return None
-            logger.info(f"[step {step_id}] commanded={commanded_angle:+.2f} measured={measured_angle:+.2f} deg")
+            measured_angle = detect_qr_angle(image_path)
 
-            # Logs the data in the CSV file
+            if measured_angle is None:
+                logger.warning(f"[step {step_id}] no marker detected — logging NaN and continuing")
+                measured_angle = float("nan")
+            else:
+                logger.info(f"[step {step_id}] commanded={commanded_angle:+.2f} measured={measured_angle:+.2f} deg")
+
+            # Logs the data in the CSV file (NaN if marker missing)
             log_row(CALIBRATION_CSV, now.isoformat(timespec="seconds"), image_path, commanded_angle, measured_angle)
             return measured_angle
 
@@ -101,8 +104,13 @@ class CalibratorAgent(agent.Agent):
         # Entry function of the agent
         async def run(self):
             os.makedirs(CALIBRATION_DIR, exist_ok=True)
-            existing = [int(os.path.splitext(n)[0]) for n in os.listdir(CALIBRATION_DIR)
-                        if os.path.splitext(n)[0].isdigit()]
+
+            # find the next free step id by scanning existing .jpg files
+            existing = []
+            for name in os.listdir(CALIBRATION_DIR):
+                stem = os.path.splitext(name)[0]
+                if stem.isdigit():
+                    existing.append(int(stem))
             step_id = max(existing, default=-1) + 1
 
             # Starts with taking a first picture and measuring it
