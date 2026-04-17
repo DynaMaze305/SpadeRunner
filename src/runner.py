@@ -6,6 +6,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 from alphabot_controller import AlphabotController
+from keyboard_controller import KeyBoardController
 from camera_receiver import ReceiverAgent
 
 async def run_alphabot_controller():
@@ -26,6 +27,23 @@ async def run_alphabot_controller():
 
     return alphabot_controller
 
+async def run_keyboard_controller() -> KeyBoardController:
+    """Instancie et démarre le KeyBoardController
+
+    Returns:
+        KeyBoardController: L'agent KeyBoardController ainstancié
+    """
+    xmpp_jid = os.getenv("XMPP_JID")
+    xmpp_password = os.getenv("XMPP_PASSWORD")
+    robot_recipient = os.getenv("ROBOT_RECIPIENT", "alpha-pi-zero-agent@prosody")
+
+    logger.info(f"Starting KeyBoardController with JID: {xmpp_jid}")
+
+    controller = KeyBoardController(jid=xmpp_jid, password=xmpp_password, recipient_jid=robot_recipient)
+    await controller.start(auto_register=True)
+
+    return controller
+
 async def run_camera_receiver():
     xmpp_jid = os.getenv("XMPP_JID")
     xmpp_password = os.getenv("XMPP_PASSWORD")
@@ -44,36 +62,17 @@ async def run_camera_receiver():
     return receiver
 
 async def main():
-    os.makedirs("received_photos", exist_ok=True)
-    
-    # alphabot_controller = await run_alphabot_controller()
-    camera_receiver = await run_camera_receiver()
+    keyboard_controller = await run_keyboard_controller()
 
-    if not camera_receiver:
-        logger.error("Failed to start camera receiver.")
-        return
-    
     try:
-        logger.info("Both agents running. Press Ctrl+C to stop.")
-        
-        # while any(behavior.is_running for behavior in alphabot_controller.behaviours):
-        #     await asyncio.sleep(1)
-        #
-        # logger.info("Alphabot controller has completed all instructions.")
-        
-        # Keep the camera receiver running until explicitly stopped
-        while camera_receiver.is_alive():
+        logger.info("Agents running. Use arrow keys to control the robot. Press Ctrl+C to stop.")
+        while keyboard_controller.is_alive():
             await asyncio.sleep(1)
 
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt. Shutting down...")
     finally:
-        # Stop both agents
-        tasks = [
-            # asyncio.create_task(alphabot_controller.stop()),
-            asyncio.create_task(camera_receiver.stop())
-        ]
-        await asyncio.gather(*tasks)
+        await keyboard_controller.stop()
         logger.info("All agents stopped.")
 
 if __name__ == "__main__":
