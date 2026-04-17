@@ -6,6 +6,9 @@ from spade.agent import Agent
 from spade.behaviour import CyclicBehaviour
 from spade.message import Message
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 
 class KeyBoardController(Agent):
     """SPADE agent : sends movement commands to the robot via XMPP based on keyboard input
@@ -19,6 +22,9 @@ class KeyBoardController(Agent):
         self.add_behaviour(self.KeyboardBehaviour())
 
     class KeyboardBehaviour(CyclicBehaviour):
+
+        async def on_start(self):
+            logger.info("Use arrow keys to move, SPACE to stop")
 
         async def run(self):
             loop = asyncio.get_event_loop()
@@ -40,6 +46,7 @@ class KeyBoardController(Agent):
                 return
 
             if command:
+                logger.info(f"Sending command: {command}")
                 msg = Message(to=self.agent.recipient_jid)
                 msg.set_metadata("performative", "inform")
                 msg.body = command
