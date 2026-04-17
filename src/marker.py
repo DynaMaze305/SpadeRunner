@@ -25,8 +25,6 @@ if pose is not None:
 
     # Draw center point of the marker
     marker_image = cam.draw_point(pose["center"], marker_image)
-
-    cv2.imwrite("output.jpg", marker_image)
 else:
     # No marker detected
     print("No marker detected.")

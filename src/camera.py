@@ -30,6 +30,13 @@ class Camera:
     def copy(self) -> np.ndarray:
         # Return a copy of the current image
         return self.get_image().copy()
+    
+    def get_rgb_image(self) -> np.ndarray:
+        return cv2.cvtColor(self.get_image(), cv2.COLOR_BGR2RGB)
+    
+    def get_hsv_image(self) -> np.ndarray:
+        return cv2.cvtColor(self.get_image(), cv2.COLOR_BGR2HSV)
+
 
     # ArUco
     #https://stackoverflow.com/questions/77397697/opencv-aruco-marker-detection
@@ -122,3 +129,37 @@ class Camera:
 
         cv2.circle(image, point, 5, (0, 0, 255), -1)
         return image
+    
+
+
+    def get_color_mask_hsv(
+        self,
+        lower: np.ndarray,
+        upper: np.ndarray,
+        image_hsv: np.ndarray | None = None,
+    ) -> np.ndarray:
+        if image_hsv is None:
+            image_hsv = self.get_hsv_image()
+
+        return cv2.inRange(image_hsv, lower, upper)
+    
+    #here we need 2 mask because pink/red is on the edge of the spectrum (hue 0 and hue 180), so we need to combine two ranges to capture all pink/red hues.
+    def detect_pink_mask(self) -> np.ndarray:
+        img_hsv = self.get_hsv_image()
+
+        lower_pink_1 = np.array([140, 60, 60]) # light makes it hard to find pink, so we will need to have a controleed environment
+        upper_pink_1 = np.array([179, 255, 255])
+
+        lower_pink_2 = np.array([0, 60, 60])
+        upper_pink_2 = np.array([7, 255, 255])
+
+        mask1 = self.get_color_mask_hsv(lower_pink_1, upper_pink_1, img_hsv)
+        mask2 = self.get_color_mask_hsv(lower_pink_2, upper_pink_2, img_hsv)
+
+        pink_mask = cv2.bitwise_or(mask1, mask2)
+
+        kernel = np.ones((3, 3), np.uint8)
+        pink_mask = cv2.morphologyEx(pink_mask, cv2.MORPH_CLOSE, kernel)
+        pink_mask = cv2.morphologyEx(pink_mask, cv2.MORPH_OPEN, kernel)
+
+        return pink_mask
