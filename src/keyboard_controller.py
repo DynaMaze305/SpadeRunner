@@ -40,10 +40,8 @@ class KeyBoardController(Agent):
                 command = "left"
             elif key == readchar.key.RIGHT:
                 command = "right"
-            elif key == readchar.key.ESC:
-                await self.agent.stop()
-                # TODO : adapt the mechanism to have stop command override current command to ensure my manual emergency safety
-                return
+            elif key == " ":
+                command = "stop"
 
             if command:
                 logger.info(f"Sending command: {command}")
