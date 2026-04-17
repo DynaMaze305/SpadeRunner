@@ -14,3 +14,5 @@ services:
       - "isc-coordinator.lan:192.168.88.250"
     env_file:
       - .env
+    stdin_open: true # to let the container open to external signal
+    tty: true # enable "keep the container running"
