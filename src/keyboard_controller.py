@@ -48,6 +48,7 @@ class KeyBoardController(Agent):
                 logger.info(f"Sending command: {command}")
                 msg = Message(to=self.agent.recipient_jid)
                 msg.set_metadata("performative", "inform")
+                msg.set_metadata("source", "keyboard")
                 msg.body = command
 
                 await self.send(msg)
