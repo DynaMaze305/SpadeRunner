@@ -1,6 +1,7 @@
 import asyncio
 import time
 import readchar
+import logging
 
 from spade.agent import Agent
 from spade.behaviour import CyclicBehaviour
