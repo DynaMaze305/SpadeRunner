@@ -1,4 +1,5 @@
 from __future__ import annotations  # Enable postponed evaluation of type hints (cleaner typing)
+import math
 import cv2                         # OpenCV main library (image processing)
 import cv2.aruco as aruco         # ArUco module (marker detection)
 import numpy as np                # Numerical computations (arrays, geometry)
@@ -75,6 +76,11 @@ class Camera:
         p0, p1 = pts[0], pts[1]
         angle_deg = np.degrees(np.arctan2(p1[1] - p0[1], p1[0] - p0[0]))
         return float(angle_deg)
+
+    @staticmethod
+    def correct_angle(angle_deg: float, offset_deg: float) -> float:
+        # Apply an offset and wrap the result to (-180, 180]
+        return (angle_deg + offset_deg + 180.0) % 360.0 - 180.0
     
     #https://stackoverflow.com/questions/79327929/using-opencv-to-achieve-a-top-down-view-of-an-image-with-aruco-markers
     def get_marker_homography(self, pts: np.ndarray) -> np.ndarray:
@@ -120,5 +126,50 @@ class Camera:
         else:
             image = image.copy()
 
-        cv2.circle(image, point, 5, (0, 0, 255), -1)
+        cv2.circle(image, point, 2, (0, 255, 128), -1)
+        return image
+
+    def draw_arrow(self, point: tuple[int, int], angle_deg: float,
+                   length: int = 10, thickness: int = 1,
+                   image: np.ndarray | None = None) -> np.ndarray:
+        # Draws an arrow starting at point, pointing in the direction given by angle_deg
+        if image is None:
+            image = self.copy()
+        else:
+            image = image.copy()
+
+        cx, cy = point
+        angle_rad = math.radians(angle_deg)
+        end = (int(cx + length * math.cos(angle_rad)),
+               int(cy + length * math.sin(angle_rad)))
+
+        cv2.arrowedLine(image, (cx, cy), end, (0, 255, 128), thickness)
+        return image
+
+    def draw_axes(self, origin: tuple[int, int] = (60, 60), length: int = 40,
+                  image: np.ndarray | None = None) -> np.ndarray:
+        # Draws a small legend in a corner showing X, Y axes and positive angle direction
+        if image is None:
+            image = self.copy()
+        else:
+            image = image.copy()
+
+        ox, oy = origin
+
+        # X axis (red), pointing right
+        cv2.arrowedLine(image, (ox, oy), (ox + length, oy), (0, 0, 255), 2)
+        cv2.putText(image, "X", (ox + length + 5, oy + 5),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+
+        # Y axis (blue), pointing down (image convention, y grows downward)
+        cv2.arrowedLine(image, (ox, oy), (ox, oy + length), (255, 0, 0), 2)
+        cv2.putText(image, "Y", (ox - 5, oy + length + 15),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+
+        # Positive angle arc (yellow): from +X rotating toward +Y
+        radius = length // 2
+        cv2.ellipse(image, origin, (radius, radius), 0, 0, 60, (0, 255, 255), 2)
+        cv2.putText(image, "+a", (ox + radius + 2, oy + radius + 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+
         return image

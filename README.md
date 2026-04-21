@@ -24,7 +24,8 @@ The `.env` file contains all necessary configuration:
 
 - `XMPP_JID`: Your XMPP account JID for the robot controller
 - `XMPP_PASSWORD`: Your XMPP account password
-- `ROBOT_RECIPIENT`: The JID of the robot agent (default: alpha-pi-zero-agent@prosody)
+- `ROBOT_JID`: The JID of the robot agent (default: alphabot21-agent@isc-coordinator.lan)
+- `CAMERA_JID`: The JID of the ceiling camera agent (default: camera_agent@isc-coordinator.lan)
 - `ROBOT_INSTRUCTIONS`: Comma-separated list of instructions to send to the robot
 - `XMPP_SERVER`: XMPP server for camera receiver (default: localhost)
 - `CAMERA_USERNAME`: XMPP username for camera receiver

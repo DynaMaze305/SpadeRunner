@@ -15,7 +15,7 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-from calibrator_agent import CalibratorAgent
+from agents.calibrator.agent import CalibratorAgent
 
 # Creates a Calibrator agent , and registers it to the coordinator
 async def run_calibrator():

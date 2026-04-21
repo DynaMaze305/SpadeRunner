@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.9-slim
 
 WORKDIR /app
 
@@ -20,4 +20,6 @@ RUN mkdir -p /app/received_photos
 
 COPY . .
 
-ENTRYPOINT ["python", "src/calibrator_runner.py"]
+ENV PYTHONPATH=/app/src
+
+ENTRYPOINT ["python", "src/main.py"]

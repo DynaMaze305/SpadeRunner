@@ -7,21 +7,21 @@
     Based on the camera_receiver by Berk Buzcu
 """
 
-import os
-import asyncio
 import logging
-import base64
-import aiofiles
-import os
 import datetime
 
 from spade import agent, behaviour
 from spade.message import Message
-from pathfinding import compute_path
+
+from common.camera_client import CameraClient
+from common.photo_io import save_bytes
+from pathfinding.pathfinding import compute_path
 
 # Set up logging to track program execution
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+PHOTOS_DIR = "navigation_photos"
 
 # Agent that waits for a path request
 class NavigatorAgent(agent.Agent):
@@ -43,36 +43,21 @@ class NavigatorAgent(agent.Agent):
                 return
 
             # asking for a photo to the coordinator
-            msg = Message(to="camera_agent@isc-coordinator.lan")
-            msg.set_metadata("performative", "request")
-            msg.body = "Requesting photo"
-
-            await self.send(msg)
-            logger.info("Requested a photo from the camera_agent at isc-coordinator.lan")
+            camera = CameraClient(self)
+            img_data = await camera.request_photo("navigator")
 
             # Waits for the picture
-            photo_request = await self.receive(timeout=30)
-
-            if not photo_request:
+            if img_data is None:
                 logger.warning("No photo received from camera_agent")
                 return
 
             logger.info("Received a photo from camera_agent")
 
             # saving the photo
-            img_data = base64.b64decode(photo_request.body)
-
-            # Create a directory for photo storage if non existant
-            photos_dir  = os.path.join(os.getcwd(), "received_photos")
-            os.makedirs(photos_dir, exist_ok=True)
-
             # Saves the picture with timestamp
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"photo_{timestamp}.jpg"
-            filepath = os.path.join(photos_dir, filename)
-
-            async with aiofiles.open(filepath, "wb") as img_file:
-                await img_file.write(img_data)
+            filepath = await save_bytes(img_data, filename, PHOTOS_DIR)
 
             print(f"Photo saved as '{filepath}'.")
 
