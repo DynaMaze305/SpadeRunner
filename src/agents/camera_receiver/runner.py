@@ -1,8 +1,7 @@
 """
-    Runner function from the calibrator agent that
+    Runner function from the camera agent that
     fetches a picture from the camera agent
-    computes the rotation angle
-    returns it to the robot
+    saves it to the disk
 
     Based on the runner.py by Berk Buzcu
 """
@@ -22,44 +21,44 @@ async def run_camera_receiver():
     xmpp_jid = os.getenv("XMPP_JID")
     xmpp_password = os.getenv("XMPP_PASSWORD")
 
-    logger.info(f"Starting Calibrator with JID: {xmpp_jid}")
+    logger.info(f"Starting Camera Receiver with JID: {xmpp_jid}")
 
     # Creation of the agent
-    calibrator = CameraReceiverAgent(xmpp_jid, xmpp_password)
+    cmaera_receiver = CameraReceiverAgent(xmpp_jid, xmpp_password)
 
     # Registration
-    await calibrator.start(auto_register=True)
+    await cmaera_receiver.start(auto_register=True)
 
     # Cleanup if failure
-    if not calibrator.is_alive():
-        logger.error("Calibrator agent couldn't connect.")
-        await calibrator.stop()
+    if not cmaera_receiver.is_alive():
+        logger.error("Camera_receiver agent couldn't connect.")
+        await cmaera_receiver.stop()
         return None
 
-    logger.info("Calibrator agent started successfully.")
-    return calibrator
+    logger.info("Camera_receiver agent started successfully.")
+    return cmaera_receiver
 
 
 async def main():
     # Creates a directory for storing the calibration photos
-    os.makedirs("calibration_photos", exist_ok=True)
+    os.makedirs("Camera_reception", exist_ok=True)
 
     # Starts the agent setup
     agent = await run_camera_receiver()
     if not agent:
-        logger.error("Failed to start calibrator.")
+        logger.error("Failed to start camera_receiver.")
         return
 
     # Runtime info for running and shutdown
     try:
-        logger.info("Calibrator running.")
+        logger.info("cmaera_receiver running.")
         while agent.is_alive():
             await asyncio.sleep(1)
     except KeyboardInterrupt:
         logger.info("Shutting down...")
     finally:
         await agent.stop()
-        logger.info("Calibrator stopped.")
+        logger.info("cmaera_receiver stopped.")
 
 
 if __name__ == "__main__":
