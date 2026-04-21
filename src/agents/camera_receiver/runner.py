@@ -24,19 +24,19 @@ async def run_camera_receiver():
     logger.info(f"Starting Camera Receiver with JID: {xmpp_jid}")
 
     # Creation of the agent
-    cmaera_receiver = CameraReceiverAgent(xmpp_jid, xmpp_password)
+    camera_receiver = CameraReceiverAgent(xmpp_jid, xmpp_password)
 
     # Registration
-    await cmaera_receiver.start(auto_register=True)
+    await camera_receiver.start(auto_register=True)
 
     # Cleanup if failure
-    if not cmaera_receiver.is_alive():
+    if not camera_receiver.is_alive():
         logger.error("Camera_receiver agent couldn't connect.")
-        await cmaera_receiver.stop()
+        await camera_receiver.stop()
         return None
 
     logger.info("Camera_receiver agent started successfully.")
-    return cmaera_receiver
+    return camera_receiver
 
 
 async def main():
@@ -51,14 +51,14 @@ async def main():
 
     # Runtime info for running and shutdown
     try:
-        logger.info("cmaera_receiver running.")
+        logger.info("camera_receiver running.")
         while agent.is_alive():
             await asyncio.sleep(1)
     except KeyboardInterrupt:
         logger.info("Shutting down...")
     finally:
         await agent.stop()
-        logger.info("cmaera_receiver stopped.")
+        logger.info("camera_receiver stopped.")
 
 
 if __name__ == "__main__":
