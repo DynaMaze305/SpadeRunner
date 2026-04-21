@@ -23,6 +23,9 @@ class MotionClient:
     # Sending a rotation command to the robot
     async def command_rotation(self, signed_degrees: float, pwm: int) -> bool:
 
+        # Usage example: rotation 90
+        # 90 angle in degrees
+
         # Creates the message
         command = f"rotation {signed_degrees:g} {pwm}"
         msg = Message(to=self.jid)
@@ -49,6 +52,11 @@ class MotionClient:
         pwm = 0 if pwm is None else pwm
         ratio = 0 if ratio is None else ratio
 
+        # Usage example: move -200 0 20 1.04
+        # -200 distance
+        # 0 duration
+        # 20 PWM
+        # 1.04 ratio left/right
         command = f"move {distance:g} {duration:g} {pwm:g} {ratio:g}"
         msg = Message(to=self.jid)
         msg.set_metadata("performative", "request")
