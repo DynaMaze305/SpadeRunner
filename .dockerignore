@@ -1,0 +1,25 @@
+.venv
+.git
+.gitignore
+.idea
+.claude
+.env
+
+# photo dirs come in via compose volumes, not the image
+received_photos
+calibration_photos
+
+# accidental pip --target installs named after stdlib modules
+asyncio
+logging
+os
+time
+
+# local images / scratch
+output.jpg
+test.jpg
+
+__pycache__
+*.pyc
+*.pyo
+*.egg-info

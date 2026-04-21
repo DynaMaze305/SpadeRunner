@@ -2,6 +2,10 @@
 venv/
 env/
 
+# Claude
+.claude/
+claude/
+
 # Python
 __pycache__/
 *.py[cod]

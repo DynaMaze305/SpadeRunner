@@ -15,8 +15,7 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-from navigator_agent import NavigatorAgent
-from camera_receiver import ReceiverAgent
+from agents.navigator.agent import NavigatorAgent
 
 # Connects the navigator agent to the XMPP server
 async def run_navigator():
@@ -37,36 +36,8 @@ async def run_navigator():
     logger.info("Navigator agent started successfully.")
     return navigator
 
-# connects the camera receiver agent to the XMPP server
-async def run_camera_receiver():
-    xmpp_jid = os.getenv("XMPP_JID")
-    xmpp_password = os.getenv("XMPP_PASSWORD")
-
-    logger.info(f"Starting CameraReceiver with JID: {xmpp_jid}")
-
-    # create an agent that receives photos from the camera agent
-    receiver = ReceiverAgent(xmpp_jid, xmpp_password)
-    await receiver.start(auto_register=True)
-
-    if not receiver.is_alive():
-        logger.error("Camera receiver agent couldn't connect.")
-        await receiver.stop()
-        return None
-
-    logger.info("Camera receiver agent started successfully.")
-    return receiver
-
-# Main entry point that selects the agend based on the MODE variable
 async def main():
-    os.makedirs("received_photos", exist_ok=True)
-
-    mode = os.getenv("MODE", "navigator")
-
-    # selects the running mode according to MODE
-    if mode == "camera_test":
-        agent = await run_camera_receiver()
-    else:
-        agent = await run_navigator()
+    agent = await run_navigator()
 
     if not agent:
         logger.error("Failed to start agent.")
@@ -75,7 +46,7 @@ async def main():
     # main lop that keeps the agent running  and shutdowns in a clean way
 
     try:
-        logger.info(f"Agent running in {mode} mode.")
+        logger.info("Navigator running.")
         while agent.is_alive():
             await asyncio.sleep(1)
     except KeyboardInterrupt:

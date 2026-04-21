@@ -1,8 +1,9 @@
-from camera import Camera
+from vision.camera import Camera
 
 
-# returns the ArUco marker 2D angle (degrees) found in the image, or None if absent
-def detect_qr_angle(image_path: str):
+# returns the full marker pose {angle_deg, x, y} or None
+# opencv does the same heavy job whether we want the angle alone or angle + position
+def detect_qr_angle_pose(image_path: str):
     cam = Camera()
     cam.imread(image_path)
     corners, ids, _ = cam.detect_aruco()
@@ -10,7 +11,8 @@ def detect_qr_angle(image_path: str):
     if pose is None:
         return None
     # negate to match the trigonometric (CCW positive) convention used by the robot
-    return -pose["angle_deg"]
+    cx, cy = pose["center"]
+    return {"angle_deg": -pose["angle_deg"], "x": float(cx), "y": float(cy)}
 
 
 # returns the angle diff between two angles
