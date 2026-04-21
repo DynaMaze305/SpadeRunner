@@ -105,7 +105,8 @@ class CalibratorAgent(agent.Agent):
 
         # moves back and forth a fixed distance to test the left/right ratio
         async def run_ratio_calibration(self):
-            RATIOS = [x / 100 for x in range(100, 105)]
+            # overriding example
+            # RATIOS = [x / 100 for x in range(100, 105)]
 
             logger.info(f"mode: ratio — distance={FIXED_DISTANCE}, ratios={RATIOS}, duration={DURATION}, pwm={FIXED_PWM}")
 
