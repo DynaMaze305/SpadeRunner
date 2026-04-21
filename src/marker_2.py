@@ -1,4 +1,5 @@
 from camera import Camera
+from maze_grid_analyzer import MazeGridAnalyzer
 import cv2
 import matplotlib.pyplot as plt
 
@@ -50,23 +51,21 @@ if pink_result is not None:
 
     print("Number of filtered contours:", len(wall_result["contours"]))
 
-    # --- Extract horizontal and vertical walls ---
-    wall_parts = cam.extract_horizontal_vertical_walls(
-        wall_mask,
+    # --- Maze grid analysis ---
+    analyzer = MazeGridAnalyzer(wall_mask)
+
+    wall_parts = analyzer.extract_horizontal_vertical_walls(
         horizontal_kernel_size=25,
         vertical_kernel_size=25,
     )
-
     horizontal = wall_parts["horizontal"]
     vertical = wall_parts["vertical"]
 
-    # --- Projection profiles ---
-    profiles = cam.get_wall_projection_profiles(horizontal, vertical)
+    profiles = analyzer.get_wall_projection_profiles(horizontal, vertical)
     x_profile = profiles["x_profile"]
     y_profile = profiles["y_profile"]
 
-    # --- Detect grid lines ---
-    grid_result = cam.detect_grid_lines_from_profiles(
+    grid_result = analyzer.detect_grid_lines_from_profiles(
         x_profile,
         y_profile,
         x_threshold_ratio=0.3,
@@ -91,7 +90,7 @@ if pink_result is not None:
     overlay = cam.draw_grid_lines(wall_mask, x_lines, y_lines)
 
     # --- Compute and draw cell labels ---
-    cell_centers = cam.get_cell_centers(x_lines, y_lines)
+    cell_centers = analyzer.get_cell_centers(x_lines, y_lines)
     labeled_overlay = cam.draw_cell_labels(overlay, cell_centers)
 
     if "A1" in cell_centers:
@@ -102,8 +101,7 @@ if pink_result is not None:
         print(f"Center of cell C3: {cell_centers['C3']}")
 
     # --- Extract walls per cell ---
-    grid_walls = cam.get_grid_walls_with_band(
-        wall_mask=wall_mask,
+    grid_walls = analyzer.get_grid_walls_with_band(
         x_lines=x_lines,
         y_lines=y_lines,
         threshold=100,
@@ -114,7 +112,7 @@ if pink_result is not None:
         print(f"Walls for A1: {grid_walls['A1']}")
 
     print("\nASCII maze preview:")
-    cam.print_ascii_grid_walls(
+    analyzer.print_ascii_grid_walls(
         grid_walls=grid_walls,
         n_rows=n_rows,
         n_cols=n_cols,
