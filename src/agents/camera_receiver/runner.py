@@ -15,17 +15,17 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-from agents.calibrator.agent import CalibratorAgent
+from src.agents.camera_receiver.agent import CameraReceiverAgent
 
-# Creates a Calibrator agent , and registers it to the coordinator
-async def run_calibrator():
+# Creates a camera receiver agent , and registers it to the coordinator
+async def run_camera_receiver():
     xmpp_jid = os.getenv("XMPP_JID")
     xmpp_password = os.getenv("XMPP_PASSWORD")
 
     logger.info(f"Starting Calibrator with JID: {xmpp_jid}")
 
     # Creation of the agent
-    calibrator = CalibratorAgent(xmpp_jid, xmpp_password)
+    calibrator = CameraReceiverAgent(xmpp_jid, xmpp_password)
 
     # Registration
     await calibrator.start(auto_register=True)
@@ -45,7 +45,7 @@ async def main():
     os.makedirs("calibration_photos", exist_ok=True)
 
     # Starts the agent setup
-    agent = await run_calibrator()
+    agent = await run_camera_receiver()
     if not agent:
         logger.error("Failed to start calibrator.")
         return
