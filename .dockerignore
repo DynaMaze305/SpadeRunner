@@ -15,10 +15,6 @@ logging
 os
 time
 
-# local images / scratch
-output.jpg
-test.jpg
-
 __pycache__
 *.pyc
 *.pyo
