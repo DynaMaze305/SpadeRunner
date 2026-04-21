@@ -5,7 +5,7 @@ from vision.camera import Camera
 import cv2
 
 # Our robots
-robot_ids = [1,2,3,4,5,6,7,8,9,10,11,12]
+robot_ids = [8,12]
 
 # Create camera object
 cam = Camera()
