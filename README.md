@@ -31,6 +31,12 @@ The `.env` file contains all necessary configuration:
 - `CAMERA_USERNAME`: XMPP username for camera receiver
 - `CAMERA_PASSWORD`: XMPP password for camera receiver
 
+## Agent Folder
+
+- To add an agent, create an `agents/<agentname>/` folder
+- Place the two `agent.py` `runner.py` files in it
+- Add the agent name to the ``src/main.py`` in the ``AGENTS`` dictionnary
+
 ## Running the Project
 
 To start both the Alphabot controller and camera receiver:
