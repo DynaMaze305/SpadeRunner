@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import signal
 import threading
 import readchar
 
@@ -41,7 +42,12 @@ class KeyBoardController(Agent):
 
             def read_keys():
                 while True:
-                    key = readchar.readkey()
+                    try:
+                        key = readchar.readkey()
+                    except KeyboardInterrupt:
+                        # To ensure CTR+C stop to shows the last logging messages
+                        os.kill(os.getpid(), signal.SIGINT)
+                        break
                     # https://stackoverflow.com/questions/60113143/how-to-properly-use-asyncio-run-coroutine-threadsafe-function
                     asyncio.run_coroutine_threadsafe(self._queue.put(key), self._loop)
 
