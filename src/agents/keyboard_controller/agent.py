@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import threading
 import readchar
 
@@ -19,12 +20,13 @@ MOVE_KEYS = {
     readchar.key.RIGHT: 'right',
     readchar.key.SPACE: 'stop',
 }
+
 class KeyBoardController(Agent):
     """Sends movement commands to the robot from the keyboard input
     """
-    def __init__(self, jid, password, recipient_jid):
+    def __init__(self, jid, password):
         super().__init__(jid, password)
-        self.recipient_jid = recipient_jid
+        self.recipient_jid = os.getenv("ROBOT_RECIPIENT", "alpha-pi-zero-agent@prosody")
 
     async def setup(self):
         self.add_behaviour(self.KeyboardBehaviour())
@@ -42,7 +44,7 @@ class KeyBoardController(Agent):
                     key = readchar.readkey()
                     # https://stackoverflow.com/questions/60113143/how-to-properly-use-asyncio-run-coroutine-threadsafe-function
                     asyncio.run_coroutine_threadsafe(self._queue.put(key), self._loop)
-            
+
             # lance read_keys dans un Thread interne, safe par rapport à la loop asyncio (readchar est blocant, car attend une touche à read)
             # https://docs.python.org/3/library/threading.html
             # deamon=True : assure l'arrêt du thread si l'agent s'arrête
@@ -66,7 +68,7 @@ class KeyBoardController(Agent):
                     next_key = await asyncio.wait_for(self._queue.get(), timeout=RELEASE_TIMEOUT)
                     # la même touche continue a être pressée
                     if next_key == key:
-                        continue  
+                        continue
                     # une autre touche est pressée
                     else:
                         await self._send('stop')

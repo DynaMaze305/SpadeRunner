@@ -15,6 +15,20 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+async def start_agent(AgentClass, **kwargs):
+    """Starts an agent and returns it directly (no keepalive loop)"""
+    xmpp_jid = os.getenv("XMPP_JID")
+    xmpp_password = os.getenv("XMPP_PASSWORD")
+
+    logger.info(f"Starting {AgentClass.__name__}...")
+
+    agent = AgentClass(xmpp_jid, xmpp_password, **kwargs)
+    await agent.start(auto_register=True)
+
+    logger.info(f"... {AgentClass.__name__} has started")
+    return agent
+
+
 # Creates the given agent class and registers it to the coordinator
 async def run_agent(AgentClass, **kwargs):
     xmpp_jid = os.getenv("XMPP_JID")
