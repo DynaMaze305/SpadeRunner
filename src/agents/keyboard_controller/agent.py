@@ -27,7 +27,7 @@ class KeyBoardController(Agent):
     """
     def __init__(self, jid, password):
         super().__init__(jid, password)
-        self.recipient_jid = os.getenv("ROBOT_RECIPIENT", "alpha-pi-zero-agent@prosody")
+        self.recipient_jid = os.getenv("ROBOT_RECIPIENT", "alphabot23-agent@isc-coordinator.lan")
 
     async def setup(self):
         self.add_behaviour(self.KeyboardBehaviour())
@@ -86,7 +86,7 @@ class KeyBoardController(Agent):
                     break
 
         async def _send(self, command: str):
-            logger.info(f"Sending command: {command}")
+            logger.info(f"Sending command: {command} to robot {self.agent.recipient_jid}")
             msg = Message(to=self.agent.recipient_jid)
             msg.set_metadata("performative", "inform")
             msg.set_metadata("source", "keyboard") # keyboard : pour l'override de l'arrêt d'urgence en cas d'obstacle

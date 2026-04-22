@@ -39,6 +39,7 @@ async def main():
 
     active = []
     
+    # Pour avoir le KeybBoardController qui tourne en arrière-plan
     kb = await start_agent(KeyBoardController)
     if kb:
         active.append(kb)
