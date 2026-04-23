@@ -14,6 +14,7 @@ services:
     network_mode: "host"
     extra_hosts:
       - "isc-coordinator.lan:192.168.88.250"
+      - "isc-coordinator2.lan:192.168.88.226"
     env_file:
       - .env
     stdin_open: true # to let the container open to external signal
