@@ -42,12 +42,15 @@ RATIOS = [0.99, 1.0, 1.01, 1.02, 1.03, 1.04, 1.05]
 FIXED_PWM = 20
 
 # speed mode
-SPEED_DURATION = 1
+SPEED_DURATION = 2
 SPEED_PWM = 20
 
 # curve mode
-CURVE_DURATIONS = [1, 2, 3, 4, 5, 10]
-CURVE_PWM = 20
+CURVE_PWM = 15
+CURVE_DURATIONS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+CURVE_RATIO = 1.02
+
+MULTIPLY = 1
 
 class CalibratorAgent(agent.Agent):
     class CalibrateBehaviour(behaviour.OneShotBehaviour):
@@ -136,16 +139,17 @@ class CalibratorAgent(agent.Agent):
 
         # tries a range of duration to build a duration/distance curve with a fixed ratio
         async def run_curve_calibration(self):
-            logger.info(f"mode: curve — ratio={LOCKED_RATIO}, durations={CURVE_DURATIONS}, pwm={CURVE_PWM}")
-            for duration in CURVE_DURATIONS:
-                for direction in (1, -1):
-                    signed_duration = duration * direction
-                    if not await self.motion.command_move(None, signed_duration, CURVE_PWM, LOCKED_RATIO):
-                        return
-                    if await self.calibrate_rot_pos(
-                        duration=signed_duration, pwm=CURVE_PWM, ratio=LOCKED_RATIO,
-                    ) is None:
-                        return
+            logger.info(f"mode: curve — ratio={CURVE_RATIO}, durations={CURVE_DURATIONS}, pwm={CURVE_PWM}")
+            for i in range(MULTIPLY):
+                for duration in CURVE_DURATIONS:
+                    for direction in (1, -1):
+                        signed_duration = duration * direction
+                        if not await self.motion.command_move(None, signed_duration, CURVE_PWM, CURVE_RATIO):
+                            return
+                        if await self.calibrate_rot_pos(
+                            duration=signed_duration, pwm=CURVE_PWM, ratio=CURVE_RATIO,
+                        ) is None:
+                            return
 
         async def run_rotation_calibration(self):
             logger.info(f"mode: rotation — angles={TARGET_ANGLES}, pwms={PWM_VALUES}")
