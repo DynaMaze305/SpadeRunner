@@ -10,10 +10,11 @@ import logging
 
 from spade.message import Message
 
-from common.config import CAMERA_JID
 from common.photo_io import save_bytes
 
 logger = logging.getLogger(__name__)
+
+CAMERA_JID = os.getenv("CAMERA_JID", "camera_agent@isc-coordinator2.lan")
 
 
 # Helper client that wraps the photo request exchange

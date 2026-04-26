@@ -11,7 +11,6 @@ import os
 import asyncio
 import logging
 
-
 # Set up logging to track program execution
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -19,20 +18,21 @@ logger = logging.getLogger(__name__)
 from agents.calibrator.agent import CalibratorAgent
 from agents.navigator.agent import NavigatorAgent
 from agents.camera_receiver.agent import CameraReceiverAgent
-from agents.keyboard_controller.agent import KeyBoardController
-from common.runner import start_agent
+from agents.navigator_request.agent import NavigationRequesterAgent
+from common.runner import run_agent, start_agent
 
 # Maps MODE value to the agent class
 AGENTS = {
     "calibrator": CalibratorAgent,
     "navigator": NavigatorAgent,
     "camera_test": CameraReceiverAgent,
+    "navigator_request": NavigationRequesterAgent,
 }
 
 
 async def main():
-    # default mode fallback
-    mode = os.getenv("MODE", "camera_test")
+    # Reads the MODE env variable and looks up the agent class
+    mode = os.getenv("MODE", "calibrator")
     if mode not in AGENTS:
         logger.error(f"Unknown MODE '{mode}', valid modes: {list(AGENTS.keys())}")
         return
@@ -40,16 +40,11 @@ async def main():
     logger.info(f"Running in {mode.upper()} mode")
 
     active = []
-    
-    # Pour avoir le KeybBoardController qui tourne en arrière-plan
-    kb = await start_agent(KeyBoardController)
-    if kb:
-        active.append(kb)
-
-    # main mode agent runs in parallel with the keyboard controller
-    agent = await start_agent(AGENTS[mode])
-    if agent:
-        active.append(agent)
+    nav = await start_agent(NavigatorAgent, os.getenv("NAVIGATOR_JID"))
+    if nav:
+        active.append(nav)
+        
+    await run_agent(AGENTS[mode])
 
     try:
         while all(a.is_alive() for a in active):
