@@ -4,14 +4,13 @@
     exchange so the agent just calls: await motion.command_rotation(...)
 """
 
-import os
 import logging
 
 from spade.message import Message
 
-logger = logging.getLogger(__name__)
+from common.config import ROBOT_JID
 
-ROBOT_JID = os.getenv("ROBOT_JID", "alphabot21-agent@isc-coordinator.lan")
+logger = logging.getLogger(__name__)
 
 
 # Helper client that wraps the motion commands sent to the robot
@@ -21,13 +20,19 @@ class MotionClient:
         self.jid = jid
 
     # Sending a rotation command to the robot
-    async def command_rotation(self, signed_degrees: float, pwm: int) -> bool:
+    async def command_rotation(self, signed_degrees: float, duration=None, pwm=None, ratio=None) -> bool:
 
-        # Usage example: rotation 90
+        # Usage example: rotation 90 0 15 0.1
         # 90 angle in degrees
 
+        # robot uses "0" as the null default,  convert any None field before formatting
+        signed_degrees = 0 if signed_degrees is None else signed_degrees
+        duration = 0 if duration is None else duration
+        pwm = 0 if pwm is None else pwm
+        ratio = 0 if ratio is None else ratio
+
         # Creates the message
-        command = f"rotation {signed_degrees:g} {pwm}"
+        command = f"rotation {signed_degrees:g} {duration:g} {pwm:g} {ratio:g}"
         msg = Message(to=self.jid)
         msg.set_metadata("performative", "request")
         msg.body = command
@@ -46,7 +51,7 @@ class MotionClient:
 
     async def command_move(self, distance: float, duration=None, pwm=None, ratio=None) -> bool:
 
-        # robot uses "0" as the null sentinel — convert any None field before formatting
+        # robot uses "0" as the null default, convert any None field before formatting
         distance = 0 if distance is None else distance
         duration = 0 if duration is None else duration
         pwm = 0 if pwm is None else pwm

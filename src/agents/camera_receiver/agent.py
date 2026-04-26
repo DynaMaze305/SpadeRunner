@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 PHOTOS_DIR = "received_photos"
 
 class CameraReceiverAgent(agent.Agent):
+    ENV_PREFIX = "CAMERA_RECEIVER"
+
     class CameraReceiveBehaviour(behaviour.OneShotBehaviour):
         async def run(self):
             camera = CameraClient(self)

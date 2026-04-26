@@ -1,4 +1,4 @@
-"""Plots for linear regression models on the rotation
+"""Plots for linear regression models on the speed (forward / backward distance per duration)
     Co-author: ClaudeAI on all matplotlib graphs
 """
 
@@ -17,19 +17,17 @@ ROOT = os.path.dirname(HERE)
 CALIBRATION_DIR = os.path.join(ROOT, "calibration_photos")
 
 
-# pick the run folder from a CLI run id, otherwise take the most recent one
-if len(sys.argv) > 1:
-    run_id = sys.argv[1]
-    folders = glob.glob(os.path.join(CALIBRATION_DIR, f"calibration_{run_id}_*"))
-    if not folders:
-        sys.exit(f"no calibration folder for run {run_id} in {CALIBRATION_DIR}/")
-    folder = folders[0]
-else:
-    folders = glob.glob(os.path.join(CALIBRATION_DIR, "calibration_*"))
-    if not folders:
-        sys.exit(f"no calibration folder found in {CALIBRATION_DIR}/")
-    folder = max(folders, key=os.path.getmtime)
+# default would be the most recent run, kept here for later
+# folders = glob.glob(os.path.join(CALIBRATION_DIR, "calibration_*"))
+# if not folders:
+#     sys.exit(f"no calibration folder found in {CALIBRATION_DIR}/")
+# folder = max(folders, key=os.path.getmtime)
 
+# pinned to a specific run to compare runs side by side
+folder = "calibration_photos/calibration_55_20260423_172249"
+
+# anything farther than this between two consecutive frames is treated as an outlier (marker jump / lost detection)
+MAX_DISTANCE = 100
 
 print(f"folder: {folder}")
 
@@ -48,36 +46,43 @@ with open(csv_path, "r", newline="") as f:
 print(f"rows: {len(rows)}")
 
 
-# walk the rows and compute the rotation between two consecutive frames
-# split the points by direction: CW (positive duration) and CCW (negative duration)
+# walk the rows and compute the distance between two consecutive marker positions
+# split the points by direction: forward (positive duration) and backward (negative duration)
 positive_points = []
 negative_points = []
-prev_angle = None
+prev_x = None
+prev_y = None
 
 for row in rows:
-    angle = float(row["measured_angle"])
+    x = float(row["measured_x"])
+    y = float(row["measured_y"])
     duration = float(row["duration"])
 
-    if math.isnan(angle):
-        prev_angle = None
+    if math.isnan(x) or math.isnan(y):
+        prev_x = None
+        prev_y = None
         continue
 
-    if prev_angle is None:
-        prev_angle = angle
+    if prev_x is None:
+        prev_x = x
+        prev_y = y
         continue
 
-    # wrap the diff into [-180, 180] then push the sign to match the commanded direction
-    diff = (angle - prev_angle + 180.0) % 360.0 - 180.0
-    if duration > 0 and diff < 0:
-        diff += 360.0
-    elif duration < 0 and diff > 0:
-        diff -= 360.0
-    prev_angle = angle
+    # distance in pixel between the previous and the current marker position
+    dx = x - prev_x
+    dy = y - prev_y
+    distance = math.sqrt(dx * dx + dy * dy)
+    prev_x = x
+    prev_y = y
+
+    if distance > MAX_DISTANCE:
+        print(f"skipping outlier: duration={duration} distance={distance:.1f}")
+        continue
 
     if duration > 0:
-        positive_points.append((duration, abs(diff)))
+        positive_points.append((duration, distance))
     elif duration < 0:
-        negative_points.append((abs(duration), abs(diff)))
+        negative_points.append((abs(duration), distance))
 
 # sort by duration so the regression line plots in order
 positive_points.sort()
@@ -86,7 +91,7 @@ negative_points.sort()
 print(f"positive points: {len(positive_points)}")
 print(f"negative points: {len(negative_points)}")
 
-# split the (duration, rotation) pairs into x/y arrays for numpy
+# split the (duration, distance) pairs into x/y arrays for numpy
 pos_x = np.array([d for d, _ in positive_points])
 pos_y = np.array([a for _, a in positive_points])
 neg_x = np.array([d for d, _ in negative_points])
@@ -99,32 +104,32 @@ pos_pred = pos_slope * pos_x + pos_intercept
 pos_ss_res = np.sum((pos_y - pos_pred) ** 2)
 pos_ss_tot = np.sum((pos_y - np.mean(pos_y)) ** 2)
 pos_r2 = 1 - pos_ss_res / pos_ss_tot
-print(f"CW  fit: y = {pos_slope:.2f} * x + {pos_intercept:.2f}   R^2 = {pos_r2:.4f}")
+print(f"forward  fit: y = {pos_slope:.2f} * x + {pos_intercept:.2f}   R^2 = {pos_r2:.4f}")
 
 neg_slope, neg_intercept = np.polyfit(neg_x, neg_y, 1)
 neg_pred = neg_slope * neg_x + neg_intercept
 neg_ss_res = np.sum((neg_y - neg_pred) ** 2)
 neg_ss_tot = np.sum((neg_y - np.mean(neg_y)) ** 2)
 neg_r2 = 1 - neg_ss_res / neg_ss_tot
-print(f"CCW fit: y = {neg_slope:.2f} * x + {neg_intercept:.2f}   R^2 = {neg_r2:.4f}")
+print(f"backward fit: y = {neg_slope:.2f} * x + {neg_intercept:.2f}   R^2 = {neg_r2:.4f}")
 
 
 # scatter + fit line, both directions on the same figure
 plt.figure()
-plt.scatter(pos_x, pos_y, color="tab:blue", label="positive duration (CW) data")
+plt.scatter(pos_x, pos_y, color="tab:blue", label="positive duration (forward) data")
 plt.plot(pos_x, pos_pred, color="tab:blue", linestyle="--",
-         label=f"CW fit: y={pos_slope:.1f}x+{pos_intercept:.1f}  R^2={pos_r2:.3f}")
-plt.scatter(neg_x, neg_y, color="tab:red", label="negative duration (CCW) data")
+         label=f"forward fit: y={pos_slope:.1f}x+{pos_intercept:.1f}  R^2={pos_r2:.3f}")
+plt.scatter(neg_x, neg_y, color="tab:red", label="negative duration (backward) data")
 plt.plot(neg_x, neg_pred, color="tab:red", linestyle="--",
-         label=f"CCW fit: y={neg_slope:.1f}x+{neg_intercept:.1f}  R^2={neg_r2:.3f}")
+         label=f"backward fit: y={neg_slope:.1f}x+{neg_intercept:.1f}  R^2={neg_r2:.3f}")
 plt.xlabel("duration (s)")
-plt.ylabel("|measured rotation| (deg)")
+plt.ylabel("distance (px)")
 plt.title(f"calibration: {os.path.basename(folder)}")
 plt.legend()
 plt.grid(True)
 
 # save the figure next to the csv inside the run folder
-output_path = os.path.join(folder, "rotation_linear_regression.png")
+output_path = os.path.join(folder, "speed_linear_regression.png")
 plt.savefig(output_path)
 print(f"saved: {output_path}")
 
