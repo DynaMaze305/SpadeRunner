@@ -1,9 +1,3 @@
-"""
-    Helper client used by any agent that needs a photo from the
-    ceiling camera. Wraps the XMPP request so the
-    agent just calls: img = await camera.request_photo(label)
-"""
-
 import os
 import base64
 import logging
