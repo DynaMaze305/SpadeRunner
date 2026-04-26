@@ -25,6 +25,8 @@ PHOTOS_DIR = "navigation_photos"
 
 # Agent that waits for a path request
 class NavigatorAgent(agent.Agent):
+    ENV_PREFIX = "NAVIGATOR"
+
     class NavigateBehaviour(behaviour.CyclicBehaviour):
         async def run(self):
 
@@ -61,7 +63,7 @@ class NavigatorAgent(agent.Agent):
 
             print(f"Photo saved as '{filepath}'.")
 
-            # Placeholder TODO: Impleemnt the path computation (OpenCV)
+            # Placeholder TODO: Implement the path computation (OpenCV)
             computed_path = compute_path(img_data)
 
             # Sends the computed path back to the agent who requested it

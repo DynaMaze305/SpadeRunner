@@ -12,32 +12,43 @@ import os
 import asyncio
 import logging
 
+from common.config import COORDINATOR_HOST
+
 logger = logging.getLogger(__name__)
 
 
-async def start_agent(AgentClass, **kwargs):
-    """Starts an agent and returns it directly (no keepalive loop)"""
-    xmpp_jid = os.getenv("XMPP_JID")
-    xmpp_password = os.getenv("XMPP_PASSWORD")
+async def start_agent(AgentClass, custom_jid=None, **kwargs):
+    """Starts an agent and returns it directly (no keepalive loop).
 
-    logger.info(f"Starting {AgentClass.__name__}...")
+    Reads <ENV_PREFIX>_USER and <ENV_PREFIX>_PASSWORD from the env so each
+    agent can log in with its own XMPP account. Pass custom_jid to override
+    the derived JID (used to make one agent log in as another).
+    """
+    prefix = AgentClass.ENV_PREFIX
+    user = os.getenv(f"{prefix}_USER")
+    agent_jid = custom_jid or f"{user}@{COORDINATOR_HOST}"
+    agent_password = os.getenv(f"{prefix}_PASSWORD")
 
-    agent = AgentClass(xmpp_jid, xmpp_password, **kwargs)
+    logger.info(f"Starting {AgentClass.__name__} as {agent_jid}...")
+
+    agent = AgentClass(agent_jid, agent_password, **kwargs)
     await agent.start(auto_register=True)
 
     logger.info(f"... {AgentClass.__name__} has started")
     return agent
 
 
-# Creates the given agent class and registers it to the coordinator
-async def run_agent(AgentClass, **kwargs):
-    xmpp_jid = os.getenv("XMPP_JID")
-    xmpp_password = os.getenv("XMPP_PASSWORD")
+# Same as start_agent but keeps the agent alive in a loop until Ctrl+C
+async def run_agent(AgentClass, custom_jid=None, **kwargs):
+    prefix = AgentClass.ENV_PREFIX
+    user = os.getenv(f"{prefix}_USER")
+    agent_jid = custom_jid or f"{user}@{COORDINATOR_HOST}"
+    agent_password = os.getenv(f"{prefix}_PASSWORD")
 
-    logger.info(f"Starting {AgentClass.__name__} with JID: {xmpp_jid}")
+    logger.info(f"Starting {AgentClass.__name__} with JID: {agent_jid}")
 
     # Creation of the agent
-    agent = AgentClass(xmpp_jid, xmpp_password, **kwargs)
+    agent = AgentClass(agent_jid, agent_password, **kwargs)
 
     # Registration
     await agent.start(auto_register=True)

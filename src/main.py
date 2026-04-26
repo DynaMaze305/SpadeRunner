@@ -11,6 +11,7 @@ import os
 import asyncio
 import logging
 
+
 # Set up logging to track program execution
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -19,6 +20,7 @@ from agents.calibrator.agent import CalibratorAgent
 from agents.navigator.agent import NavigatorAgent
 from agents.camera_receiver.agent import CameraReceiverAgent
 from agents.keyboard_controller.agent import KeyBoardController
+from agents.driver.agent import DriverAgent
 from common.runner import start_agent
 
 # Maps MODE value to the agent class
@@ -26,10 +28,12 @@ AGENTS = {
     "calibrator": CalibratorAgent,
     "navigator": NavigatorAgent,
     "camera_test": CameraReceiverAgent,
+    "driver": DriverAgent,
 }
 
 
 async def main():
+    # default mode fallback
     mode = os.getenv("MODE", "camera_test")
     if mode not in AGENTS:
         logger.error(f"Unknown MODE '{mode}', valid modes: {list(AGENTS.keys())}")
@@ -44,6 +48,7 @@ async def main():
     if kb:
         active.append(kb)
 
+    # main mode agent runs in parallel with the keyboard controller
     agent = await start_agent(AGENTS[mode])
     if agent:
         active.append(agent)
