@@ -20,7 +20,6 @@ from agents.calibrator.agent import CalibratorAgent
 from agents.navigator.agent import NavigatorAgent
 from agents.camera_receiver.agent import CameraReceiverAgent
 from agents.keyboard_controller.agent import KeyBoardController
-from agents.driver.agent import DriverAgent
 from common.runner import start_agent
 
 # Maps MODE value to the agent class
@@ -28,7 +27,6 @@ AGENTS = {
     "calibrator": CalibratorAgent,
     "navigator": NavigatorAgent,
     "camera_test": CameraReceiverAgent,
-    "driver": DriverAgent,
 }
 
 
