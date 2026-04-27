@@ -30,14 +30,6 @@ class ArucoDetector:
 
         return corners, ids, rejected
 
-    def detect_from_path(self, image_path: str):
-        # Load image from disk
-        cam = Camera()
-        image = cam.imread(image_path)
-
-        # Detect markers in the loaded image
-        return self.detect(image)
-
     def draw_detected_markers(
         self,
         image: np.ndarray,

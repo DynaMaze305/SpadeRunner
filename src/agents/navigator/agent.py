@@ -27,31 +27,13 @@ PHOTOS_DIR = "navigation_photos"
 
 
 class NavigatorAgent(agent.Agent):
-
+    ENV_PREFIX = "NAVIGATOR"
     class NavigateBehaviour(behaviour.CyclicBehaviour):
 
         @staticmethod
         def fmt(v):
             return f"{v:.2f}" if isinstance(v, (int, float)) else "None"
-        
-        def cell_center_to_image_point(self, cell, crop_bbox, x_lines, y_lines):
-            row_letter = cell[0].upper()
-            col = int(cell[1:]) - 1
-
-            row_map = {
-                "C": 0,
-                "B": 1,
-                "A": 2,
-            }
-
-            row = row_map[row_letter]
-
-            local_x = (x_lines[col] + x_lines[col + 1]) / 2
-            local_y = (y_lines[row] + y_lines[row + 1]) / 2
-
-            x1, y1, _, _ = crop_bbox
-
-            return int(x1 + local_x), int(y1 + local_y)
+    
 
         def save_debug_images(
             self,
