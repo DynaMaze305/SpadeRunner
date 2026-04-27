@@ -36,14 +36,6 @@ class Camera:
         # Return a copy of the current image so the original stays unchanged
         return self.get_image().copy()
 
-    def get_rgb_image(self) -> np.ndarray:
-        # Convert the current image from BGR to RGB for display with matplotlib
-        return cv2.cvtColor(self.get_image(), cv2.COLOR_BGR2RGB)
-
-    def get_hsv_image(self) -> np.ndarray:
-        # Convert the current image from BGR to HSV for color detection
-        return cv2.cvtColor(self.get_image(), cv2.COLOR_BGR2HSV)
-
     @staticmethod
     def angle_diff(new: float, old: float) -> float:
         # Compute the shortest signed difference between two angles
