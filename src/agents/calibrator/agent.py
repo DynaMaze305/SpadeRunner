@@ -16,7 +16,7 @@ import datetime
 
 from spade import agent, behaviour
 
-from vision.qr_detector import detect_qr_angle_pose
+from vision.aruco_detector import ArucoDetector
 from agents.calibrator.log import log_row
 from common.camera_client import CameraClient
 from common.config import ARUCO_ID
@@ -45,9 +45,9 @@ ROTATION_PWM = 15
 ROTATION_RATIO = 1.05
 
 # rotation verification mode
-# VERIFICATION_ANGLES = [90, 90, 90, 90, 90]
+VERIFICATION_ANGLES = [90, 90, 90, 90, 90]
 # VERIFICATION_ANGLES = [180, 180, 180, 180, 180]
-VERIFICATION_ANGLES = [30] * 12
+# VERIFICATION_ANGLES = [30] * 2
 
 # ratio mode
 FIXED_DISTANCE = 200
@@ -66,7 +66,7 @@ CURVE_RATIO = 1.02
 
 # distance mode
 DISTANCES = [200, 150, 200]
-DISTANCES_RATIO = 1.1
+DISTANCES_RATIO = 1.01
 DISTANCES_PWM = 15
 
 
@@ -97,7 +97,8 @@ class CalibratorAgent(agent.Agent):
             timestamp = now.isoformat(timespec="seconds")
 
             # Get the robot rotation + position using the vision lib
-            pose = detect_qr_angle_pose(image_path, ARUCO_ID)
+            aruco = ArucoDetector()
+            pose = aruco.detect_qr_angle_pose(image_path, ARUCO_ID)
             if pose is None:
                 logger.warning(f"[step {self.step_id}] no marker detected — NaN")
                 measured_angle = float("nan")
@@ -173,7 +174,6 @@ class CalibratorAgent(agent.Agent):
                             duration=signed_duration, pwm=CURVE_PWM, ratio=CURVE_RATIO,
                         ) is None:
                             return
-                        input("press ENTER for next step...")
 
         # tries a range of distances forward then backward with a fixed ratio
         async def run_distance_calibration(self):
@@ -188,7 +188,6 @@ class CalibratorAgent(agent.Agent):
                             target_distance=signed_distance, pwm=DISTANCES_PWM, duration=None, ratio=DISTANCES_RATIO,
                         ) is None:
                             return
-                        input("press ENTER for next step...")
 
         # tries a range of durations at fixed pwm/ratio to build a duration/angle curve for the rotation
         async def run_rotation_calibration(self):

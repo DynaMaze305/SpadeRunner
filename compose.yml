@@ -11,6 +11,8 @@ services:
       - .:/app
       - ./received_photos:/app/received_photos
       - ./calibration_photos:/app/calibration_photos
+      - ./navigation_photos:/app/navigation_photos
+      
     network_mode: "host"
     extra_hosts:
       - "isc-coordinator.lan:192.168.88.250"

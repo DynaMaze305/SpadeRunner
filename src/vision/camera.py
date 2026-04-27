@@ -1,175 +1,129 @@
-from __future__ import annotations  # Enable postponed evaluation of type hints (cleaner typing)
-import math
-import cv2                         # OpenCV main library (image processing)
-import cv2.aruco as aruco         # ArUco module (marker detection)
-import numpy as np                # Numerical computations (arrays, geometry)
+from __future__ import annotations
+
+import cv2
+import numpy as np
 
 
-# Abstraction layer over OpenCV for image loading and ArUco marker detection.
+# Abstraction layer over OpenCV for image loading, color conversion, and debug drawing
 class Camera:
 
     def __init__(self) -> None:
         # Current loaded image
-        self.image = None
+        self.image: np.ndarray | None = None
 
     def imread(self, path: str) -> np.ndarray:
-        # Load an image from disk
+        # Load an image from disk using OpenCV
         image = cv2.imread(path)
 
+        # Stop if the image could not be loaded
         if image is None:
             raise ValueError(f"Could not load image from path: {path}")
 
+        # Store the loaded image inside the camera object
         self.image = image
+
         return image
 
     def get_image(self) -> np.ndarray:
-        # Return the current image
+        # Make sure an image has been loaded before accessing it
         if self.image is None:
             raise ValueError("No image loaded.")
+
+        # Return the currently loaded image
         return self.image
 
     def copy(self) -> np.ndarray:
-        # Return a copy of the current image
+        # Return a copy of the current image so the original stays unchanged
         return self.get_image().copy()
 
-    # ArUco
-    #https://stackoverflow.com/questions/77397697/opencv-aruco-marker-detection
-
-
-    def create_aruco_detector(self) -> aruco.ArucoDetector:
-        # Create and return an ArUco detector
-        aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
-        parameters = aruco.DetectorParameters()
-        detector = aruco.ArucoDetector(aruco_dict, parameters)
-        return detector
-
-    def detect_aruco(self):
-        # Detect ArUco markers in the current image
-        detector = self.create_aruco_detector()
-        corners, ids, rejected = detector.detectMarkers(self.get_image())
-        return corners, ids, rejected
-
-    def draw_detected_markers(self, corners, ids) -> np.ndarray:
-        # Draw detected ArUco markers on a copy of the image
-        image = self.copy()
-
-        if ids is not None:
-            aruco.drawDetectedMarkers(image, corners, ids)
-
-        return image
-
-    def get_marker_corners(self, corners, index: int = 0) -> np.ndarray:
-        # Return the 4 corner points of a detected marker as float32
-        if not corners:
-            raise ValueError("No marker corners available.")
-
-        return corners[index][0].astype(np.float32)
-
-    def get_marker_center(self, pts: np.ndarray) -> tuple[int, int]:
-        # Compute the center of a marker from its 4 corner points
-        center = pts.mean(axis=0)
-        cx, cy = center.astype(int)
-        return int(cx), int(cy)
-
-    def get_marker_angle_2d(self, pts: np.ndarray) -> float:
-        # Compute the 2D angle of the marker from its top edge
-        p0, p1 = pts[0], pts[1]
-        angle_deg = np.degrees(np.arctan2(p1[1] - p0[1], p1[0] - p0[0]))
-        return float(angle_deg)
+    @staticmethod
+    def angle_diff(new: float, old: float) -> float:
+        # Compute the shortest signed difference between two angles
+        # Result is normalized to the range [-180, 180]
+        return (new - old + 180.0) % 360.0 - 180.0
 
     @staticmethod
     def correct_angle(angle_deg: float, offset_deg: float) -> float:
-        # Apply an offset and wrap the result to (-180, 180]
+        # Apply an offset to an angle and normalize the result to [-180, 180]
         return (angle_deg + offset_deg + 180.0) % 360.0 - 180.0
-    
-    #https://stackoverflow.com/questions/79327929/using-opencv-to-achieve-a-top-down-view-of-an-image-with-aruco-markers
-    def get_marker_homography(self, pts: np.ndarray) -> np.ndarray:
-        # Compute the image -> marker local 2D homography
-        marker_size = 20.0
 
-        dst_pts = np.array(
-            [
-                [0, 0],
-                [marker_size, 0],
-                [marker_size, marker_size],
-                [0, marker_size],
-            ],
-            dtype=np.float32,
-        )
+    def draw_axes(
+        self,
+        image,
+        origin=(60, 60),
+        length=40,
+        thickness=2,
+    ):
+        # Work on a copy so the original image is not modified
+        output = image.copy()
 
-        H = cv2.getPerspectiveTransform(pts, dst_pts)
-        return H
-
-    def get_marker_pose_2d(self, corners, ids, index: int = 0):
-        # Return 2D pose information for one detected ArUco marker
-        if ids is None or len(corners) == 0:
-            return None
-
-        pts = self.get_marker_corners(corners, index)
-        cx, cy = self.get_marker_center(pts)
-        angle_deg = self.get_marker_angle_2d(pts)
-        H = self.get_marker_homography(pts)
-
-        return {
-            "id": int(ids[index][0]),
-            "corners": pts,
-            "center": (cx, cy),
-            "angle_deg": angle_deg,
-            "homography": H,
-        }
-
-    #https://stackoverflow.com/questions/49799057/how-to-draw-a-point-in-an-image-using-given-co-ordinate-with-python-opencv?utm_source=chatgpt.com
-    def draw_point(self, point: tuple[int, int], image: np.ndarray | None = None) -> np.ndarray:
-        # Use provided image, otherwise fallback to current image
-        if image is None:
-            image = self.copy()
-        else:
-            image = image.copy()
-
-        cv2.circle(image, point, 2, (0, 255, 128), -1)
-        return image
-
-    def draw_arrow(self, point: tuple[int, int], angle_deg: float,
-                   length: int = 10, thickness: int = 1,
-                   image: np.ndarray | None = None) -> np.ndarray:
-        # Draws an arrow starting at point, pointing in the direction given by angle_deg
-        if image is None:
-            image = self.copy()
-        else:
-            image = image.copy()
-
-        cx, cy = point
-        angle_rad = math.radians(angle_deg)
-        end = (int(cx + length * math.cos(angle_rad)),
-               int(cy + length * math.sin(angle_rad)))
-
-        cv2.arrowedLine(image, (cx, cy), end, (0, 255, 128), thickness)
-        return image
-
-    def draw_axes(self, origin: tuple[int, int] = (60, 60), length: int = 40,
-                  image: np.ndarray | None = None) -> np.ndarray:
-        # Draws a small legend in a corner showing X, Y axes and positive angle direction
-        if image is None:
-            image = self.copy()
-        else:
-            image = image.copy()
-
+        # Extract axis origin coordinates
         ox, oy = origin
 
-        # X axis (red), pointing right
-        cv2.arrowedLine(image, (ox, oy), (ox + length, oy), (0, 0, 255), 2)
-        cv2.putText(image, "X", (ox + length + 5, oy + 5),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+        # Draw positive X axis in red
+        cv2.arrowedLine(output, (ox, oy), (ox + length, oy), (0, 0, 255), thickness)
+        cv2.putText(
+            output,
+            "X",
+            (ox + length + 5, oy + 5),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (0, 0, 255),
+            thickness,
+        )
 
-        # Y axis (blue), pointing down (image convention, y grows downward)
-        cv2.arrowedLine(image, (ox, oy), (ox, oy + length), (255, 0, 0), 2)
-        cv2.putText(image, "Y", (ox - 5, oy + length + 15),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+        # Draw positive Y axis in blue
+        # In image coordinates, positive Y points downward
+        cv2.arrowedLine(output, (ox, oy), (ox, oy + length), (255, 0, 0), thickness)
+        cv2.putText(
+            output,
+            "Y",
+            (ox - 5, oy + length + 15),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (255, 0, 0),
+            thickness,
+        )
 
-        # Positive angle arc (yellow): from +X rotating toward +Y
+        # Draw a small arc showing the positive angle direction
         radius = length // 2
-        cv2.ellipse(image, origin, (radius, radius), 0, 0, 60, (0, 255, 255), 2)
-        cv2.putText(image, "+a", (ox + radius + 2, oy + radius + 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+        cv2.ellipse(
+            output,
+            origin,
+            (radius, radius),
+            0,
+            0,
+            60,
+            (0, 255, 255),
+            thickness,
+        )
+
+        # Label the angle direction
+        cv2.putText(
+            output,
+            "+theta",
+            (ox + radius + 5, oy + radius + 10),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            (0, 255, 255),
+            1,
+        )
+
+        return output
+
+    @staticmethod
+    def decode_image(image_data: bytes) -> np.ndarray:
+        # Convert raw image bytes into a NumPy array
+        arr = np.frombuffer(image_data, dtype=np.uint8)
+
+        # Decode the NumPy array into an OpenCV BGR image
+        image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+
+        # Stop if decoding failed
+        if image is None:
+            raise ValueError("Could not decode image data.")
+
+        # Rotate image by 180 degrees to match the camera/setup orientation
+        image = cv2.rotate(image, cv2.ROTATE_180)
 
         return image
