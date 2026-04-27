@@ -2,9 +2,10 @@ import logging
 import os
 
 from spade.message import Message
+# from common.config import ROBOT_JID
 
 logger = logging.getLogger(__name__)
-ROBOT_JID = os.getenv("ROBOT_JID", "alphabot21-agent@isc-coordinator2.lan")
+ROBOT_JID = os.getenv("ROBOT_JID", "motion-alphabot23-agent@isc-coordinator2.lan")
 
 # Helper client that wraps the motion commands sent to the robot
 class MotionClient:

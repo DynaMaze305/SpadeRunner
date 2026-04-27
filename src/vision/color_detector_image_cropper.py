@@ -27,17 +27,21 @@ LAB2_CROP_BBOX = (20, 115, 785, 370)
 class ColorDetectorImageCropper:
 
     def detect_pink_mask(self, image: np.ndarray) -> np.ndarray:
-        # Convert image from BGR (OpenCV default) to HSV color space
-        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        # Convert BGR → LAB
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
 
-        # Create binary masks for both pink ranges
-        mask1 = cv2.inRange(hsv, PINK_LOWER_1, PINK_UPPER_1)
-        mask2 = cv2.inRange(hsv, PINK_LOWER_2, PINK_UPPER_2)
+        # Split channels
+        L, A, B = cv2.split(lab)
 
-        # Combine both masks into a single mask
-        mask = cv2.bitwise_or(mask1, mask2)
+        # Define pink range in LAB
+        # You will likely tweak these
+        lower = np.array([0, 150, 130])   # L, A, B
+        upper = np.array([255, 255, 200])
 
-        # Apply morphological operations to clean the mask
+        # Create mask
+        mask = cv2.inRange(lab, lower, upper)
+
+        # Morphological cleaning
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, MORPH_KERNEL, iterations=2)
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, MORPH_KERNEL, iterations=1)
 
