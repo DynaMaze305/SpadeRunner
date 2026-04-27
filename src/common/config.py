@@ -12,7 +12,7 @@ ROBOT_NUM = os.getenv("ROBOT_NUM", "1")
 ARUCO_IDS = {"1": 12, "3": 8}
 ARUCO_ID = ARUCO_IDS[ROBOT_NUM]
 
-ROBOT_JID = f"alphabot2{ROBOT_NUM}-agent@{COORDINATOR_HOST}"
+ROBOT_JID = f"motion-alphabot2{ROBOT_NUM}-agent@{COORDINATOR_HOST}"
 CAMERA_JID = f"camera_agent@{COORDINATOR_HOST}"
 
 
