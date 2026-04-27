@@ -5,12 +5,8 @@ import string
 
 import cv2
 import numpy as np
-
+from common.config import ARUCO_ID
 from vision.aruco_detector import ArucoDetector
-
-
-# ArUco marker ID attached to the robot
-TARGET_ID = 8
 
 
 # Detects the robot position and orientation inside the maze grid
@@ -74,7 +70,7 @@ class RobotGridLocalizer:
         y_lines: list[int],
     ):
         # Detect the robot ArUco marker in the full image
-        result = self.aruco.detect_pose(image, target_id=TARGET_ID)
+        result = self.aruco.detect_pose(image, target_id=ARUCO_ID)
 
         # Extract the marker pose result
         pose = result["pose"]
@@ -202,7 +198,7 @@ class RobotGridLocalizer:
         image: np.ndarray,
     ) -> np.ndarray:
         # Detect ArUco marker and rejected marker candidates
-        result = self.aruco.detect_pose(image, target_id=TARGET_ID)
+        result = self.aruco.detect_pose(image, target_id=ARUCO_ID)
 
         # Work on a copy so the original image stays unchanged
         output = image.copy()
