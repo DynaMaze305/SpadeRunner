@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 # Agent responsible for sending navigation requests to the NavigatorAgent
 class NavigationRequesterAgent(agent.Agent):
-    ENV_PREFIX = "NAV_REQ"
+    ENV_PREFIX = "NAVIGATOR_REQUEST"
     class SendNavigationRequestBehaviour(behaviour.OneShotBehaviour):
 
         async def run(self):
