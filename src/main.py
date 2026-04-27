@@ -40,7 +40,7 @@ async def main():
     logger.info(f"Running in {mode.upper()} mode")
 
     active = []
-    nav = await start_agent(NavigatorAgent, os.getenv("NAVIGATOR_JID"))
+    nav = await start_agent(NavigatorAgent)
     if nav:
         active.append(nav)
         
