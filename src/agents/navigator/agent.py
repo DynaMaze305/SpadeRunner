@@ -20,6 +20,9 @@ from vision.grid_detector import GridDetector
 from vision.robot_grid_localizer import RobotGridLocalizer
 from vision.camera import Camera
 
+
+from common.config import ROBOT_JID
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -37,13 +40,9 @@ class NavigatorAgent(agent.Agent):
             if request is None:
                 return
 
-            robot_jid = os.getenv(
-                "ROBOT_JID",
-                "alphabot21-agent@isc-coordinator2.lan",
-            )
 
             logger.info(f"[REQUEST] From: {request.sender} | Body: {request.body}")
-            logger.info(f"[ROBOT JID] {robot_jid}")
+            logger.info(f"[ROBOT JID] {ROBOT_JID}")
 
             if request.body != "request path":
                 logger.warning(f"[WARN] Unknown request: {request.body}")
@@ -56,7 +55,7 @@ class NavigatorAgent(agent.Agent):
 
             executor = PathMotionExecutor(
                 behaviour=self,
-                robot_jid=robot_jid,
+                robot_jid=ROBOT_JID,
                 move_distance=200,
                 move_pwm=15,
                 rotation_pwm=15,
@@ -133,6 +132,17 @@ class NavigatorAgent(agent.Agent):
                 logger.info(f"[GRID] y_lines: {y_lines}")
                 logger.info(f"[GRID] rows: {n_rows}, cols: {n_cols}")
 
+
+                debug.save_debug_images(
+                    step=step,
+                    image=image,
+                    maze=maze,
+                    wall_clean=wall_clean,
+                    grid_detector=grid_detector,
+                    x_lines=x_lines,
+                    y_lines=y_lines,
+                )
+                
                 if n_rows != 3 or n_cols != 11:
                     bad_grid_count += 1
                     logger.warning(
@@ -190,7 +200,7 @@ class NavigatorAgent(agent.Agent):
                 if current_cell == target_cell:
                     logger.info("[SUCCESS] Reached destination")
 
-                    reply = Message(to=robot_jid)
+                    reply = Message(to=ROBOT_JID)
                     reply.set_metadata("performative", "response")
                     reply.body = "navigation done"
                     await self.send(reply)
@@ -228,7 +238,7 @@ class NavigatorAgent(agent.Agent):
 
             logger.error("[FAIL] Navigation failed or max steps reached")
 
-            reply = Message(to=robot_jid)
+            reply = Message(to=ROBOT_JID)
             reply.set_metadata("performative", "response")
             reply.body = "navigation failed"
             await self.send(reply)

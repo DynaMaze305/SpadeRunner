@@ -15,7 +15,7 @@ class NavigatorDebug:
     @staticmethod
     def fmt(v):
         return f"{v:.2f}" if isinstance(v, (int, float)) else "None"
-
+    
     def save_debug_images(
                 self,
                 step: int,
