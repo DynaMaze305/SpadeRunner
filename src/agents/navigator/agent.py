@@ -2,7 +2,6 @@ import datetime
 import logging
 import os
 
-import cv2
 from spade import agent, behaviour
 from spade.message import Message
 
@@ -13,6 +12,7 @@ from common.photo_io import save_bytes
 from pathfinding.path_command_converter import PathCommandConverter
 from pathfinding.pathfinding import compute_path
 
+from agents.navigator.debug import NavigatorDebug
 from vision.camera import Camera
 from vision.color_detector_image_cropper import ColorDetectorImageCropper
 from vision.contour_processor import ContourProcessor
@@ -29,78 +29,6 @@ PHOTOS_DIR = "navigation_photos"
 class NavigatorAgent(agent.Agent):
     ENV_PREFIX = "NAVIGATOR"
     class NavigateBehaviour(behaviour.CyclicBehaviour):
-
-        @staticmethod
-        def fmt(v):
-            return f"{v:.2f}" if isinstance(v, (int, float)) else "None"
-    
-
-        def save_debug_images(
-            self,
-            step: int,
-            image,
-            maze,
-            wall_clean,
-            grid_detector,
-            x_lines,
-            y_lines,
-            localizer=None,
-            robot=None,
-        ) -> None:
-            os.makedirs(PHOTOS_DIR, exist_ok=True)
-
-            camera_utils = Camera()
-            image_with_axes = camera_utils.draw_axes(image)
-
-            cv2.imwrite(
-                f"{PHOTOS_DIR}/debug_original_step_{step}.jpg",
-                image_with_axes,
-            )
-
-            cv2.imwrite(
-                f"{PHOTOS_DIR}/debug_crop_step_{step}.jpg",
-                maze["cropped"],
-            )
-
-            cv2.imwrite(
-                f"{PHOTOS_DIR}/debug_wall_mask_step_{step}.jpg",
-                wall_clean,
-            )
-
-            grid_overlay = grid_detector.draw_grid_lines(
-                wall_clean=wall_clean,
-                x_lines=x_lines,
-                y_lines=y_lines,
-            )
-
-            cv2.imwrite(
-                f"{PHOTOS_DIR}/debug_grid_step_{step}.jpg",
-                cv2.cvtColor(grid_overlay, cv2.COLOR_RGB2BGR),
-            )
-
-            if localizer is not None:
-                aruco_debug = localizer.draw_aruco_debug(image_with_axes)
-
-                cv2.imwrite(
-                    f"{PHOTOS_DIR}/debug_aruco_step_{step}.jpg",
-                    aruco_debug,
-                )
-
-            if robot is not None and localizer is not None:
-                robot_debug = localizer.draw_robot_grid_debug(
-                    image=image_with_axes,
-                    robot_result=robot,
-                    crop_bbox=maze["crop_bbox"],
-                    x_lines=x_lines,
-                    y_lines=y_lines,
-                )
-
-                cv2.imwrite(
-                    f"{PHOTOS_DIR}/debug_robot_step_{step}.jpg",
-                    robot_debug,
-                )
-
-            logger.info(f"[DEBUG] Saved debug images for step {step}")
 
         async def run(self):
             logger.info("[WAIT] Waiting for robot request...")
@@ -143,6 +71,8 @@ class NavigatorAgent(agent.Agent):
             contour_processor = ContourProcessor()
             grid_detector = GridDetector()
             cam = Camera()
+            debug = NavigatorDebug()
+
 
             target_cell = os.getenv("TARGET_CELL", "C1")
             max_steps = int(os.getenv("MAX_STEPS", "50"))
@@ -203,17 +133,6 @@ class NavigatorAgent(agent.Agent):
                 logger.info(f"[GRID] y_lines: {y_lines}")
                 logger.info(f"[GRID] rows: {n_rows}, cols: {n_cols}")
 
-                self.save_debug_images(
-                    step=step,
-                    image=image,
-                    maze=maze,
-                    wall_clean=wall_clean,
-                    grid_detector=grid_detector,
-                    x_lines=x_lines,
-                    y_lines=y_lines,
-                    localizer=localizer,
-                )
-
                 if n_rows != 3 or n_cols != 11:
                     bad_grid_count += 1
                     logger.warning(
@@ -232,7 +151,7 @@ class NavigatorAgent(agent.Agent):
                     y_lines=y_lines,
                 )
 
-                self.save_debug_images(
+                debug.save_debug_images(
                     step=step,
                     image=image,
                     maze=maze,
@@ -248,19 +167,15 @@ class NavigatorAgent(agent.Agent):
                     logger.error("[ERROR] Robot detection failed: no ArUco pose")
                     break
 
-                if robot["cell"] is None:
-                    logger.error("[ERROR] Robot detected but outside grid")
-                    break
-
                 current_cell = robot["cell"]
                 current_angle = robot["angle_deg"]
 
                 logger.info(
                     f"[ROBOT] cell={current_cell}, "
-                    f"corrected_angle={self.fmt(robot.get('angle_deg'))}, "
-                    f"raw_angle={self.fmt(robot.get('raw_angle_deg'))}, "
-                    f"marker_angle={self.fmt(robot.get('marker_angle_deg'))}, "
-                    f"offset={self.fmt(robot.get('angle_offset_deg'))}, "
+                    f"corrected_angle={debug.fmt(robot.get('angle_deg'))}, "
+                    f"raw_angle={debug.fmt(robot.get('raw_angle_deg'))}, "
+                    f"marker_angle={debug.fmt(robot.get('marker_angle_deg'))}, "
+                    f"offset={debug.fmt(robot.get('angle_offset_deg'))}, "
                     f"center={robot.get('center')}, "
                     f"rejected={robot.get('rejected_count')}"
                 )
