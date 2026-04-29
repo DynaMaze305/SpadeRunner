@@ -23,7 +23,7 @@ def detect_black_mask(image: np.ndarray) -> np.ndarray:
 
 def extract_obstacles_from_mask(
     mask: np.ndarray,
-    min_area: int = 35,
+    min_area: int = 30,
     max_area: int = 500,
     min_width: int = 6,
     min_height: int = 6,
