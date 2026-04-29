@@ -9,7 +9,7 @@ import datetime
 
 
 # Creates a new run directory and returns its path and run id
-def new_run_dir(parent: str, prefix: str):
+def new_run_dir(parent: str, prefix: str, with_timestamp: bool = True):
     os.makedirs(parent, exist_ok=True)
 
     # Increments the Folder directory name
@@ -23,7 +23,10 @@ def new_run_dir(parent: str, prefix: str):
     run_id = max(existing_runs, default=-1) + 1
 
     # creates the name for the subdirectory
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_dir = os.path.join(parent, f"{prefix}_{run_id}_{timestamp}")
+    if with_timestamp:
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_dir = os.path.join(parent, f"{prefix}_{run_id}_{timestamp}")
+    else:
+        run_dir = os.path.join(parent, f"{prefix}_{run_id}")
     os.makedirs(run_dir, exist_ok=True)
     return run_dir, run_id

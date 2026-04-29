@@ -117,6 +117,7 @@ class RobotGridLocalizer:
         crop_bbox: tuple[int, int, int, int],
         x_lines: list[int],
         y_lines: list[int],
+        grid_walls: dict[str, dict[str, bool]] | None = None,
     ) -> np.ndarray:
         # Extract crop coordinates
         x1, y1, x2, y2 = crop_bbox
@@ -144,6 +145,10 @@ class RobotGridLocalizer:
                 1,
             )
 
+        # Overlay detected walls in pink so the robot's surroundings are visible
+        if grid_walls:
+            self._draw_walls(cropped, grid_walls, x_lines, y_lines)
+
         # If no robot was detected, return only the grid debug image
         if robot_result is None:
             return cropped
@@ -154,9 +159,8 @@ class RobotGridLocalizer:
         # Convert robot center to cropped-image coordinates
         local_center = (cx - x1, cy - y1)
 
-        # Get corrected robot angle, raw marker angle, and detected cell
+        # Get corrected robot angle and detected cell
         angle_deg = robot_result["angle_deg"]
-        raw_angle = robot_result.get("raw_angle_deg")
         cell = robot_result["cell"]
 
         # Draw robot center point
@@ -165,19 +169,19 @@ class RobotGridLocalizer:
         # Convert angle from degrees to radians for trigonometry
         angle_rad = math.radians(angle_deg)
 
-        # Compute arrow endpoint from angle and fixed arrow length
+        # Compute arrow endpoint from angle and fixed arrow length.
+        # Image y-axis points downward, so subtract sin to match math convention
+        # (consistent with ArucoDetector.draw_arrow).
         end = (
             int(local_center[0] + 35 * math.cos(angle_rad)),
-            int(local_center[1] + 35 * math.sin(angle_rad)),
+            int(local_center[1] - 35 * math.sin(angle_rad)),
         )
 
         # Draw robot direction arrow
         cv2.arrowedLine(cropped, local_center, end, (0, 255, 255), 2)
 
-        # Build debug label showing cell and angle information
+        # Build debug label showing cell and corrected angle only
         label = f"{cell} {angle_deg:.1f} deg"
-        if raw_angle is not None:
-            label += f" raw={raw_angle:.1f}"
 
         # Draw debug label near the robot
         cv2.putText(
@@ -192,6 +196,44 @@ class RobotGridLocalizer:
         )
 
         return cropped
+
+    @staticmethod
+    def _draw_walls(
+        image: np.ndarray,
+        grid_walls: dict[str, dict[str, bool]],
+        x_lines: list[int],
+        y_lines: list[int],
+        color: tuple[int, int, int] = (208, 224, 64),
+        thickness: int = 3,
+    ) -> None:
+        n_rows = len(y_lines) - 1
+        n_cols = len(x_lines) - 1
+        if n_rows <= 0 or n_cols <= 0:
+            return
+
+        for r in range(min(n_rows, len(string.ascii_uppercase))):
+            for c in range(n_cols):
+                label = f"{string.ascii_uppercase[r]}{c + 1}"
+                walls = grid_walls.get(label)
+                if walls is None:
+                    continue
+
+                x_left = x_lines[c]
+                x_right = x_lines[c + 1]
+                y_low = y_lines[r]
+                y_high = y_lines[r + 1]
+
+                # The "bottom" / "top" keys come from MazeGridAnalyzer and refer to
+                # the lower-y / higher-y horizontal edges of the cell respectively
+                # (image-y points downward, so "top" of the dict is visually below).
+                if walls.get("bottom"):
+                    cv2.line(image, (x_left, y_low), (x_right, y_low), color, thickness)
+                if walls.get("top"):
+                    cv2.line(image, (x_left, y_high), (x_right, y_high), color, thickness)
+                if walls.get("left"):
+                    cv2.line(image, (x_left, y_low), (x_left, y_high), color, thickness)
+                if walls.get("right"):
+                    cv2.line(image, (x_right, y_low), (x_right, y_high), color, thickness)
 
     def draw_aruco_debug(
         self,

@@ -12,6 +12,11 @@ ROBOT_NUM = os.getenv("ROBOT_NUM", "1")
 ARUCO_IDS = {"1": 12, "3": 8}
 ARUCO_ID = ARUCO_IDS[ROBOT_NUM]
 
+# Per-robot angle offset compensating for the marker mounting direction.
+# Robot 1's marker is glued 180 deg flipped from robot 3's.
+ARUCO_ANGLE_OFFSETS = {"1": 180.0, "3": 0.0}
+ARUCO_ANGLE_OFFSET = ARUCO_ANGLE_OFFSETS[ROBOT_NUM]
+
 ROBOT_JID = f"motion-alphabot2{ROBOT_NUM}-agent@{COORDINATOR_HOST}"
 CAMERA_JID = f"camera_agent@{COORDINATOR_HOST}"
 

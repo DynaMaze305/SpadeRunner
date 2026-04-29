@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
 
 import numpy as np
 
@@ -103,4 +102,41 @@ class MazeVisionPipeline:
             n_rows=n_rows,
             n_cols=n_cols,
             grid_walls=grid_walls,
+        )
+
+    # Fast path used after the maze has been analyzed once: only decodes the new
+    # image and re-crops it using the cached crop_bbox. Walls, grid lines and the
+    # walls dict are reused from `cached` since the maze itself is static for the
+    # session. Callers should validate grid size on the full-pipeline output and
+    # only pass a successful frame in here.
+    def analyze_with_cached_maze(
+        self,
+        image_bytes: bytes | None,
+        cached: VisionFrame,
+    ) -> VisionFrame | VisionError:
+        if image_bytes is None:
+            return VisionError.NO_IMAGE
+
+        try:
+            image = Camera.decode_image(image_bytes)
+        except ValueError:
+            return VisionError.NO_IMAGE
+
+        x1, y1, x2, y2 = cached.maze["crop_bbox"]
+        cropped = image[y1:y2, x1:x2]
+
+        # New maze dict: refreshed `cropped` slice, every other field reused.
+        maze = dict(cached.maze)
+        maze["cropped"] = cropped
+
+        return VisionFrame(
+            image=image,
+            image_bytes=image_bytes,
+            maze=maze,
+            wall_clean=cached.wall_clean,
+            x_lines=cached.x_lines,
+            y_lines=cached.y_lines,
+            n_rows=cached.n_rows,
+            n_cols=cached.n_cols,
+            grid_walls=cached.grid_walls,
         )

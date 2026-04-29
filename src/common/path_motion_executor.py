@@ -18,7 +18,8 @@ class PathMotionExecutor:
         move_distance: float,
         move_pwm: int,
         rotation_pwm: int,
-        ratio: float = 1.05,
+        ratio: float = 1.2,
+        rotation_ratio: float = 1.05,
     ):
         # Motion client used to communicate with the robot agent
         self.motion = MotionClient(behaviour, jid=robot_jid)
@@ -35,6 +36,9 @@ class PathMotionExecutor:
         # Calibration ratio used to fine-tune movement distance
         self.ratio = ratio
 
+        # Calibration ratio used for rotation commands (separate from move).
+        self.rotation_ratio = rotation_ratio
+
     async def rotate(self, angle_deg: float) -> bool:
         # Ignore extremely small rotations
         if abs(angle_deg) < 0.001:
@@ -47,24 +51,29 @@ class PathMotionExecutor:
         return await self.motion.command_rotation(
             signed_degrees=angle_deg,
             pwm=self.rotation_pwm,
+            ratio=self.rotation_ratio,
         )
 
     async def move_forward(
         self,
         from_cell: Optional[str] = None,
         to_cell: Optional[str] = None,
+        distance_mm: Optional[float] = None,
     ) -> bool:
+        # Use the per-call distance when provided, otherwise the default.
+        distance = float(distance_mm) if distance_mm is not None else self.move_distance
+
         # Log cell-to-cell movement if path information is available
         if from_cell and to_cell:
-            logger.info(f"Moving from {from_cell} to {to_cell}")
+            logger.info(f"Moving from {from_cell} to {to_cell} ({distance:g} mm)")
 
         # Otherwise log a generic forward movement
         else:
-            logger.info("Moving forward")
+            logger.info(f"Moving forward ({distance:g} mm)")
 
         # Send forward movement command to the robot
         return await self.motion.command_move(
-            distance=self.move_distance,
+            distance=distance,
             duration=0,
             pwm=self.move_pwm,
             ratio=self.ratio,
@@ -90,6 +99,7 @@ class PathMotionExecutor:
             return await self.move_forward(
                 from_cell=command.get("from"),
                 to_cell=command.get("to"),
+                distance_mm=command.get("distance_mm"),
             )
 
         # Reject unknown command types
