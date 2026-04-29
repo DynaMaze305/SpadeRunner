@@ -20,7 +20,7 @@ class NavigatorConfig:
     move_distance: float = 200.0
     move_pwm: int = 15
     rotation_pwm: int = 15
-    ratio: float = 1.05
+    ratio: float = 0.9
     rotation_ratio: float = 1.05
 
     grid_threshold_ratio: float = 0.03
@@ -33,7 +33,7 @@ class NavigatorConfig:
 
     angle_offset_deg: float = 0.0
 
-    rotation_tolerance_deg: float = 5.0
+    rotation_tolerance_deg: float = 2.0
     max_rotation_attempts: int = 3
 
     # Pixel-to-millimetre conversion for the camera-cropped maze view.

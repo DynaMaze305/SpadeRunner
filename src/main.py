@@ -19,6 +19,7 @@ from agents.calibrator.agent import CalibratorAgent
 from agents.navigator.agent import NavigatorAgent
 from agents.camera_receiver.agent import CameraReceiverAgent
 from agents.navigator_request.agent import NavigationRequesterAgent
+from agents.logger.agent import LoggerAgent  # disabled: grafana/logger flow off
 from common.runner import run_agent, start_agent
 
 # Maps MODE value to the agent class
@@ -27,6 +28,7 @@ AGENTS = {
     "navigator": NavigatorAgent,
     "camera_test": CameraReceiverAgent,
     "navigator_request": NavigationRequesterAgent,
+    "logger": LoggerAgent,  # disabled: grafana/logger flow off
 }
 
 
@@ -43,8 +45,12 @@ async def main():
     nav = await start_agent(NavigatorAgent)
     if nav:
         active.append(nav)
-        
-    await run_agent(AGENTS[mode])
+
+    log_agent = await start_agent(LoggerAgent)
+    if log_agent:
+        active.append(log_agent)
+
+    # await run_agent(AGENTS[mode])
 
     try:
         while all(a.is_alive() for a in active):

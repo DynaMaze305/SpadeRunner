@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 from typing import Awaitable, Callable, Optional
 
 from agents.navigator.config import NavigatorConfig
@@ -35,6 +36,7 @@ class NavigationOrchestrator:
         converter: PathCommandConverter,
         executor,
         debug: NavigatorDebug | None = None,
+        notify_logger: Callable[[str], Awaitable[None]] | None = None,
     ) -> None:
         self.config = config
         self.photo_source = photo_source
@@ -44,6 +46,7 @@ class NavigationOrchestrator:
         self.converter = converter
         self.executor = executor
         self.debug = debug
+        self.notify_logger = notify_logger
 
     async def run(self) -> NavigationResult:
         cfg = self.config
@@ -200,6 +203,13 @@ class NavigationOrchestrator:
             # Save the composite BEFORE motion executes so the card reflects
             # what the navigator decided, not what the robot ended up doing.
             self._save_debug(step, image=frame.image, frame=frame, robot_pose=robot, path=path)
+
+            # Push the just-saved per-step path image to the logger.
+            if self.notify_logger is not None and self.debug is not None:
+                path_image = os.path.join(
+                    self.debug.run_dir, "individuals", f"step_{step}", "path.jpg",
+                )
+                await self.notify_logger(path_image)
 
             success = await self._execute_with_rotation_correction(
                 commands, current_angle,

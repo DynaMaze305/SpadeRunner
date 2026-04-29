@@ -35,7 +35,7 @@ class ColorDetectorImageCropper:
 
         # Define pink range in LAB
         # You will likely tweak these
-        lower = np.array([0, 145, 125])   # L, A, B
+        lower = np.array([0, 142, 125])   # L, A, B
         upper = np.array([255, 255, 200])
 
         # Create mask
