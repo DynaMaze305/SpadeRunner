@@ -22,6 +22,8 @@ services:
       - .env
     stdin_open: true # to let the container open to external signal
     tty: true # enable "keep the container running"
+    ports:
+      - "8080:8080"
 
   # Grafana dashboard. Reads the live path image from the LoggerAgent's HTTP
   # endpoint (port 8080 on host) and exposes a Start button that POSTs to the
