@@ -13,8 +13,9 @@ services:
       - ./calibration_photos:/app/calibration_photos
       - ./navigation_photos:/app/navigation_photos
       - ./logger_state:/app/logger_state
-
-    network_mode: "host"
+    ports:
+      - "8080:8080" # Expose the app's HTTP endpoint for the logger/grafana flow
+    #network_mode: "host"
     extra_hosts:
       - "isc-coordinator.lan:192.168.88.250"
       - "isc-coordinator2.lan:192.168.88.226"
