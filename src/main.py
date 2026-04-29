@@ -19,7 +19,7 @@ from agents.calibrator.agent import CalibratorAgent
 from agents.navigator.agent import NavigatorAgent
 from agents.camera_receiver.agent import CameraReceiverAgent
 from agents.navigator_request.agent import NavigationRequesterAgent
-from agents.logger.agent import LoggerAgent  # disabled: grafana/logger flow off
+from agents.telemetry.agent import TelemetryAgent  # disabled: grafana/logger flow off
 from common.runner import run_agent, start_agent
 
 # Maps MODE value to the agent class
@@ -28,7 +28,7 @@ AGENTS = {
     "navigator": NavigatorAgent,
     "camera_test": CameraReceiverAgent,
     "navigator_request": NavigationRequesterAgent,
-    "logger": LoggerAgent,  # disabled: grafana/logger flow off
+    "logger": TelemetryAgent,  # disabled: grafana/logger flow off
 }
 
 
@@ -46,7 +46,7 @@ async def main():
     if nav:
         active.append(nav)
 
-    log_agent = await start_agent(LoggerAgent)
+    log_agent = await start_agent(TelemetryAgent)
     if log_agent:
         active.append(log_agent)
 
