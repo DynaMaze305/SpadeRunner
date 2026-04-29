@@ -62,7 +62,7 @@ SPEED_PWM = 20
 # curve mode
 CURVE_PWM = 15
 CURVE_DURATIONS = [1.0]
-CURVE_RATIO = 1.02
+CURVE_RATIO = 1.05
 
 # distance mode
 DISTANCES = [200, 150, 200]

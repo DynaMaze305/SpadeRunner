@@ -19,6 +19,8 @@ ARUCO_ANGLE_OFFSET = ARUCO_ANGLE_OFFSETS[ROBOT_NUM]
 
 ROBOT_JID = f"motion-alphabot2{ROBOT_NUM}-agent@{COORDINATOR_HOST}"
 CAMERA_JID = f"camera_agent@{COORDINATOR_HOST}"
+LOGGER_JID = f"logger@{COORDINATOR_HOST}"
+NAVIGATOR_JID = os.getenv("NAVIGATOR_JID", f"navigator@{COORDINATOR_HOST}")
 
 
 def agent_jid(user: str) -> str:

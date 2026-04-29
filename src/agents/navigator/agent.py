@@ -12,7 +12,7 @@ from agents.navigator.result import NavigationOutcome
 from agents.navigator.vision_pipeline import MazeVisionPipeline
 
 from common.camera_client import CameraClient
-from common.config import ROBOT_JID
+from common.config import LOGGER_JID, ROBOT_JID
 from common.path_motion_executor import PathMotionExecutor
 from common.run_dir import new_run_dir
 
@@ -27,6 +27,15 @@ class NavigatorAgent(agent.Agent):
     ENV_PREFIX = "NAVIGATOR"
 
     class NavigateBehaviour(behaviour.CyclicBehaviour):
+
+        # Pushes the path of the latest per-step path image to the logger agent
+        # via XMPP. The logger reads the file from the shared filesystem.
+        async def notify_logger(self, image_path: str) -> None:
+            msg = Message(to=LOGGER_JID)
+            msg.set_metadata("performative", "inform")
+            msg.body = f"image {image_path}"
+            await self.send(msg)
+            logger.info(f"[NAV] notified {LOGGER_JID}: image {image_path}")
 
         async def run(self):
             cfg: NavigatorConfig = self.agent.cfg
@@ -85,6 +94,7 @@ class NavigatorAgent(agent.Agent):
                 converter=converter,
                 executor=executor,
                 debug=debug,
+                notify_logger=self.notify_logger,
             )
 
             result = await orch.run()
