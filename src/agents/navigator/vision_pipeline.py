@@ -10,6 +10,7 @@ from vision.color_detector_image_cropper import ColorDetectorImageCropper
 from vision.contour_processor import ContourProcessor
 from vision.grid_detector import GridDetector
 from vision.maze_grid_analyzer import MazeGridAnalyzer
+from vision.obstacles_detector import detect_black_mask, extract_obstacles_from_mask
 
 
 # Failure codes returned by MazeVisionPipeline.analyze when no usable frame can be produced.
@@ -32,6 +33,8 @@ class VisionFrame:
     n_rows: int
     n_cols: int
     grid_walls: dict[str, dict[str, bool]]
+    obstacle_mask: np.ndarray
+    obstacles: list[tuple[int, int, int, int]]
 
 
 # Runs the full pink-mask -> walls -> grid -> walls-dict pipeline once per frame.
@@ -70,6 +73,8 @@ class MazeVisionPipeline:
         cropped_mask = maze["cropped_mask"]
         wall_bin = self.contour.create_wall_binary(cropped_mask)
         wall_clean = self.contour.clean_wall_mask(wall_bin)
+        obstacle_mask = detect_black_mask(maze["cropped"])
+        obstacles = extract_obstacles_from_mask(obstacle_mask)
 
         grid_result = self.grid.detect_grid_lines(
             wall_clean,
@@ -102,6 +107,8 @@ class MazeVisionPipeline:
             n_rows=n_rows,
             n_cols=n_cols,
             grid_walls=grid_walls,
+            obstacle_mask=obstacle_mask,
+            obstacles=obstacles,
         )
 
     # Fast path used after the maze has been analyzed once: only decodes the new
@@ -139,4 +146,6 @@ class MazeVisionPipeline:
             n_rows=cached.n_rows,
             n_cols=cached.n_cols,
             grid_walls=cached.grid_walls,
+            obstacle_mask=cached.obstacle_mask,
+            obstacles=cached.obstacles
         )
