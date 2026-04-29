@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from common.config import ARUCO_ANGLE_OFFSET
+
 
 # Centralizes every tunable for the navigator session.
 # Tests construct a NavigatorConfig directly; production reads env via from_env().
@@ -18,7 +20,8 @@ class NavigatorConfig:
     move_distance: float = 200.0
     move_pwm: int = 15
     rotation_pwm: int = 15
-    ratio: float = 1.02
+    ratio: float = 1.05
+    rotation_ratio: float = 1.05
 
     grid_threshold_ratio: float = 0.03
     grid_min_gap: int = 15
@@ -29,6 +32,13 @@ class NavigatorConfig:
     request_timeout_s: int = 9999
 
     angle_offset_deg: float = 0.0
+
+    rotation_tolerance_deg: float = 5.0
+    max_rotation_attempts: int = 3
+
+    # Pixel-to-millimetre conversion for the camera-cropped maze view.
+    # Cell width is 200 mm, average detected cell width is ~67.5 px -> ~2.96 mm/px.
+    mm_per_pixel: float = 2.96
 
     @classmethod
     def from_env(cls) -> "NavigatorConfig":
@@ -42,10 +52,22 @@ class NavigatorConfig:
             move_pwm=int(os.getenv("NAVIGATOR_MOVE_PWM", "15")),
             rotation_pwm=int(os.getenv("NAVIGATOR_ROTATION_PWM", "15")),
             ratio=float(os.getenv("NAVIGATOR_RATIO", "1.02")),
+            rotation_ratio=float(os.getenv("NAVIGATOR_ROTATION_RATIO", "1.05")),
             grid_threshold_ratio=float(os.getenv("NAVIGATOR_GRID_THRESHOLD_RATIO", "0.03")),
             grid_min_gap=int(os.getenv("NAVIGATOR_GRID_MIN_GAP", "15")),
             lookahead=int(os.getenv("NAVIGATOR_LOOKAHEAD", "2")),
             photos_dir=os.getenv("NAVIGATOR_PHOTOS_DIR", "navigation_photos"),
             request_timeout_s=int(os.getenv("NAVIGATOR_REQUEST_TIMEOUT_S", "9999")),
-            angle_offset_deg=float(os.getenv("NAVIGATOR_ANGLE_OFFSET_DEG", "0")),
+            angle_offset_deg=float(
+                os.getenv("NAVIGATOR_ANGLE_OFFSET_DEG", str(ARUCO_ANGLE_OFFSET))
+            ),
+            rotation_tolerance_deg=float(
+                os.getenv("NAVIGATOR_ROTATION_TOLERANCE_DEG", "5")
+            ),
+            max_rotation_attempts=int(
+                os.getenv("NAVIGATOR_MAX_ROTATION_ATTEMPTS", "3")
+            ),
+            mm_per_pixel=float(
+                os.getenv("NAVIGATOR_MM_PER_PIXEL", "2.96")
+            ),
         )

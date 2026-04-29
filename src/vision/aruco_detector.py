@@ -166,9 +166,13 @@ class ArucoDetector:
         # Detect marker pose in the loaded image
         return self.detect_pose(image, index)
 
-    def detect_qr_angle_pose(self, image_path: str):
-        # Detect marker pose from an image path
-        result = self.detect_pose_from_path(image_path)
+    def detect_qr_angle_pose(self, image_path: str, target_id: int | None = None):
+        # Load image from disk
+        cam = Camera()
+        image = cam.imread(image_path)
+
+        # Detect marker pose, filtering by target_id when provided
+        result = self.detect_pose(image, target_id=target_id)
 
         # Extract pose data
         pose = result["pose"]
@@ -182,7 +186,7 @@ class ArucoDetector:
 
         # Return simplified angle and position data
         return {
-            "angle_deg": -pose["angle_deg"],
+            "angle_deg": pose["angle_deg"],
             "x": float(cx),
             "y": float(cy),
         }

@@ -14,7 +14,7 @@ from agents.navigator.vision_pipeline import MazeVisionPipeline
 from common.camera_client import CameraClient
 from common.config import ROBOT_JID
 from common.path_motion_executor import PathMotionExecutor
-from common.photo_io import save_bytes
+from common.run_dir import new_run_dir
 
 from pathfinding.path_command_converter import PathCommandConverter
 
@@ -48,6 +48,11 @@ class NavigatorAgent(agent.Agent):
                 f"[CONFIG] target_cell={cfg.target_cell}, max_steps={cfg.max_steps}"
             )
 
+            run_dir, run_id = new_run_dir(
+                cfg.photos_dir, "navigation", with_timestamp=False,
+            )
+            logger.info(f"[RUN] Created run dir: {run_dir} (run_id={run_id})")
+
             camera = CameraClient(self)
             vision = MazeVisionPipeline(
                 threshold_ratio=cfg.grid_threshold_ratio,
@@ -63,9 +68,10 @@ class NavigatorAgent(agent.Agent):
                 move_pwm=cfg.move_pwm,
                 rotation_pwm=cfg.rotation_pwm,
                 ratio=cfg.ratio,
+                rotation_ratio=cfg.rotation_ratio,
             )
             debug = NavigatorDebug(
-                photos_dir=cfg.photos_dir,
+                run_dir=run_dir,
                 grid_detector=vision.grid,
                 localizer=localizer.localizer,
             )
@@ -79,7 +85,6 @@ class NavigatorAgent(agent.Agent):
                 converter=converter,
                 executor=executor,
                 debug=debug,
-                photo_saver=save_bytes,
             )
 
             result = await orch.run()

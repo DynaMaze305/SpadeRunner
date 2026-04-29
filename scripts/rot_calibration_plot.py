@@ -66,18 +66,14 @@ for row in rows:
         prev_angle = angle
         continue
 
-    # wrap the diff into [-180, 180] then push the sign to match the commanded direction
+    # wrap the diff into [-180, 180]
     diff = (angle - prev_angle + 180.0) % 360.0 - 180.0
-    if duration > 0 and diff < 0:
-        diff += 360.0
-    elif duration < 0 and diff > 0:
-        diff -= 360.0
     prev_angle = angle
 
     if duration > 0:
-        positive_points.append((duration, abs(diff)))
+        positive_points.append((duration, diff))
     elif duration < 0:
-        negative_points.append((abs(duration), abs(diff)))
+        negative_points.append((duration, diff))
 
 # sort by duration so the regression line plots in order
 positive_points.sort()
@@ -118,7 +114,7 @@ plt.scatter(neg_x, neg_y, color="tab:red", label="negative duration (CCW) data")
 plt.plot(neg_x, neg_pred, color="tab:red", linestyle="--",
          label=f"CCW fit: y={neg_slope:.1f}x+{neg_intercept:.1f}  R^2={neg_r2:.3f}")
 plt.xlabel("duration (s)")
-plt.ylabel("|measured rotation| (deg)")
+plt.ylabel("measured rotation (deg)")
 plt.title(f"calibration: {os.path.basename(folder)}")
 plt.legend()
 plt.grid(True)
