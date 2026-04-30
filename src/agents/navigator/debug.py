@@ -115,6 +115,7 @@ class NavigatorDebug:
                 )
 
         path_img = self._build_path_panel(frame, robot_pose, path)
+        obstacles_img = self._build_obstacles_panel(frame)
 
         # Save individual full-resolution images into individuals/step_N/
         self._save_individuals(
@@ -126,6 +127,7 @@ class NavigatorDebug:
                 "grid": grid_img,
                 "aruco": aruco_img,
                 "robot": robot_img,
+                "obstacles": obstacles_img,
                 "path": path_img,
             },
         )
@@ -137,11 +139,12 @@ class NavigatorDebug:
         grid_panel = self._panel(grid_img, "grid")
         aruco_panel = self._panel(aruco_img, "aruco")
         robot_panel = self._panel(robot_img, "robot")
+        obstacle_panel = self._panel(obstacles_img, "obstacles")
         path_panel = self._panel(path_img, "path")
         blank_panel = self._panel(None, "")
 
         row1 = cv2.hconcat([raw_panel, crop_panel, wall_panel, grid_panel])
-        row2 = cv2.hconcat([aruco_panel, robot_panel, path_panel, blank_panel])
+        row2 = cv2.hconcat([aruco_panel, robot_panel, obstacle_panel, path_panel])
         composite = cv2.vconcat([row1, row2])
 
         out_path = os.path.join(self.run_dir, f"step_{step}.jpg")
@@ -295,6 +298,18 @@ class NavigatorDebug:
                 y_text += PATH_TEXT_LINE_HEIGHT
 
         return canvas
+
+    def _build_obstacles_panel(self, frame):
+        if frame is None:
+            return None
+
+        canvas = cv2.cvtColor(frame.obstacle_mask, cv2.COLOR_GRAY2BGR)
+
+        for x1, y1, x2, y2 in frame.obstacles:
+            cv2.rectangle(canvas, (x1, y1), (x2, y2), (0, 0, 255), 2)
+
+        return canvas
+
 
     # Converts a cell label like "B5" to its centre pixel in crop-image coords.
     # Returns None if the label is malformed or out of bounds for the detected grid.

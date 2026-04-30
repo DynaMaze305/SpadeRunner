@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathfinding.pathfinding import solve_from_frame
 
+Point = tuple[int, int]
 
-# Thin wrapper around solve_from_frame; here so the orchestrator depends on
-# a small interface it can swap in tests rather than importing pathfinding directly.
+
 class PathPlanner:
 
     def plan(
@@ -12,5 +12,5 @@ class PathPlanner:
         frame,
         start_cell: str,
         end_cell: str,
-    ) -> list[str] | None:
+    ) -> list[Point] | None:
         return solve_from_frame(frame, start_cell, end_cell)
