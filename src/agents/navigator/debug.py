@@ -8,6 +8,7 @@ import string
 import cv2
 import numpy as np
 
+from pathfinding.pathfinding import obstacle_cells_from_frame
 from vision.camera import Camera
 from vision.robot_grid_localizer import RobotGridLocalizer
 
@@ -41,6 +42,8 @@ POSITION_DOT_RADIUS = 8
 ARROW_COLOR = (128, 0, 128)
 ARROW_LENGTH = 35
 ARROW_THICK = 2
+BLOCKED_CELL_COLOR = (80, 80, 255)
+BLOCKED_CELL_ALPHA = 0.28
 
 # Target-direction arrow + path info text overlay (BGR).
 TARGET_ARROW_COLOR = (0, 180, 0)
@@ -141,7 +144,6 @@ class NavigatorDebug:
         robot_panel = self._panel(robot_img, "robot")
         obstacle_panel = self._panel(obstacles_img, "obstacles")
         path_panel = self._panel(path_img, "path")
-        blank_panel = self._panel(None, "")
 
         row1 = cv2.hconcat([raw_panel, crop_panel, wall_panel, grid_panel])
         row2 = cv2.hconcat([aruco_panel, robot_panel, obstacle_panel, path_panel])
@@ -209,6 +211,8 @@ class NavigatorDebug:
             RobotGridLocalizer._draw_walls(
                 canvas, frame.grid_walls, frame.x_lines, frame.y_lines,
             )
+
+        self._draw_blocked_cells(canvas, frame)
 
         # Build the visual path. The first segment starts at the robot's actual
         # pixel position (red dot) rather than the centre of path[0], so the
@@ -310,6 +314,44 @@ class NavigatorDebug:
 
         return canvas
 
+    def _draw_blocked_cells(self, canvas: np.ndarray, frame) -> None:
+        blocked_cells = obstacle_cells_from_frame(frame)
+        if not blocked_cells:
+            return
+
+        overlay = canvas.copy()
+        for cell in blocked_cells:
+            bounds = self._cell_bounds(cell, frame.x_lines, frame.y_lines)
+            if bounds is None:
+                continue
+            x1, y1, x2, y2 = bounds
+            cv2.rectangle(overlay, (x1, y1), (x2, y2), BLOCKED_CELL_COLOR, -1)
+            cv2.rectangle(canvas, (x1, y1), (x2, y2), BLOCKED_CELL_COLOR, 2)
+
+            (tw, th), _ = cv2.getTextSize(
+                "blocked", LABEL_FONT, CELL_LABEL_SCALE, CELL_LABEL_THICK,
+            )
+            cx = (x1 + x2) // 2
+            cy = (y1 + y2) // 2
+            cv2.putText(
+                canvas,
+                "blocked",
+                (cx - tw // 2, cy + th // 2),
+                LABEL_FONT,
+                CELL_LABEL_SCALE,
+                BLOCKED_CELL_COLOR,
+                CELL_LABEL_THICK,
+                cv2.LINE_AA,
+            )
+
+        cv2.addWeighted(
+            overlay,
+            BLOCKED_CELL_ALPHA,
+            canvas,
+            1.0 - BLOCKED_CELL_ALPHA,
+            0,
+            canvas,
+        )
 
     # Converts a cell label like "B5" to its centre pixel in crop-image coords.
     # Returns None if the label is malformed or out of bounds for the detected grid.
@@ -334,6 +376,26 @@ class NavigatorDebug:
         cx = (x_lines[col] + x_lines[col + 1]) // 2
         cy = (y_lines[r] + y_lines[r + 1]) // 2
         return (cx, cy)
+
+    @staticmethod
+    def _cell_bounds(
+        label: str,
+        x_lines: list[int],
+        y_lines: list[int],
+    ) -> tuple[int, int, int, int] | None:
+        if not label or len(label) < 2:
+            return None
+        row_letter = label[0].upper()
+        try:
+            col = int(label[1:]) - 1
+        except ValueError:
+            return None
+        r = ord(row_letter) - ord("A")
+        if r < 0 or r >= len(y_lines) - 1:
+            return None
+        if col < 0 or col >= len(x_lines) - 1:
+            return None
+        return (x_lines[col], y_lines[r], x_lines[col + 1], y_lines[r + 1])
 
     def _save_individuals(self, step: int, named_images: dict) -> None:
         # Create the per-step subfolder lazily, only if there's something to save.

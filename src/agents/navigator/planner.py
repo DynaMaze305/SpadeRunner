@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from pathfinding.pathfinding import solve_from_frame
 
-Point = tuple[int, int]
-
 
 class PathPlanner:
 
@@ -12,5 +10,5 @@ class PathPlanner:
         frame,
         start_cell: str,
         end_cell: str,
-    ) -> list[Point] | None:
+    ) -> list[str] | None:
         return solve_from_frame(frame, start_cell, end_cell)
