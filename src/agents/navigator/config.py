@@ -10,7 +10,7 @@ from common.config import ARUCO_ANGLE_OFFSET
 # Tests construct a NavigatorConfig directly; production reads env via from_env().
 @dataclass(frozen=True)
 class NavigatorConfig:
-    target_cell: str = "C1"
+    target_cell: str = "B11"
     max_steps: int = 50
     max_bad_grid_retries: int = 5
 

@@ -110,6 +110,7 @@ class NavigationOrchestrator:
             logger.info(f"[GRID] x_lines: {frame.x_lines}")
             logger.info(f"[GRID] y_lines: {frame.y_lines}")
             logger.info(f"[GRID] rows: {frame.n_rows}, cols: {frame.n_cols}")
+            logger.info(f"[OBSTACLES] {frame.obstacles}")
 
             # Grid validation only runs while we don't have a cached maze: once
             # we've locked one in, the structure is reused and trusted.
@@ -209,7 +210,9 @@ class NavigationOrchestrator:
                 path_image = os.path.join(
                     self.debug.run_dir, "individuals", f"step_{step}", "path.jpg",
                 )
-                await self.notify_logger(path_image)
+
+                if os.path.exists(path_image):
+                    await self.notify_logger(path_image)
 
             success = await self._execute_with_rotation_correction(
                 commands, current_angle,
