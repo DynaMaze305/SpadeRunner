@@ -40,7 +40,7 @@ coverage.xml
 *.cover
 
 # Environment variables
-.env
+.env*
 
 # Editors
 .idea/
@@ -51,3 +51,5 @@ coverage.xml
 received_photos/*
 calibration_photos/*
 navigation_photos/*
+
+prosody

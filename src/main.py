@@ -28,7 +28,7 @@ AGENTS = {
     "navigator": NavigatorAgent,
     "camera_test": CameraReceiverAgent,
     "navigator_request": NavigationRequesterAgent,
-    "logger": TelemetryAgent,  # disabled: grafana/logger flow off
+    "telemetry": TelemetryAgent,  # disabled: grafana/logger flow off
 }
 
 
