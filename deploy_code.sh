@@ -79,7 +79,7 @@ echo "Generated .env for bot $bot_choice (XMPP coordinator $coordinator)"
 
 # Default values
 SSH_PORT=${SSH_PORT:-22}
-RSYNC_OPTS=${RSYNC_OPTS:--avz --delete}
+RSYNC_OPTS=${RSYNC_OPTS:-avz --delete}
 
 # Notice if the deployment is local or on an AlphaBot2-Pi
 if [[ $coordinator == 'p' ]]; then
