@@ -10,7 +10,7 @@ from aiohttp import web
 from spade import agent, behaviour
 from spade.message import Message
 
-from dashboard_server import Dashboard
+from agents.telemetry.dashboard_server import Dashboard
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
