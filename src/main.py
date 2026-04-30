@@ -42,15 +42,20 @@ async def main():
     logger.info(f"Running in {mode.upper()} mode")
 
     active = []
-    nav = await start_agent(NavigatorAgent)
-    if nav:
-        active.append(nav)
+    # nav = await start_agent(NavigatorAgent)
+    # if nav:
+    #     active.append(nav)
+    #
+    # log_agent = await start_agent(LoggerAgent)
+    # if log_agent:
+    #     active.append(log_agent)
+
+    await run_agent(AGENTS[mode])
 
     log_agent = await start_agent(TelemetryAgent)
     if log_agent:
         active.append(log_agent)
 
-    # await run_agent(AGENTS[mode])
 
     try:
         while all(a.is_alive() for a in active):

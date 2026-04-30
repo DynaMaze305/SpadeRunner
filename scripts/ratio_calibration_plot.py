@@ -10,65 +10,87 @@ import os
 import sys
 
 import matplotlib.pyplot as plt
-import numpy as np
 
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 CALIBRATION_DIR = os.path.join(ROOT, "calibration_photos")
 
-# match the navigator: read the per-robot aruco offset from common.config
+# share the same fit + plot as the calibrator agent
 sys.path.insert(0, os.path.join(ROOT, "src"))
+from agents.calibrator.ratio_analysis import analyse_ratio
 from common.config import ARUCO_ANGLE_OFFSET, ROBOT_NUM
 print(f"robot {ROBOT_NUM}, aruco angle offset: {ARUCO_ANGLE_OFFSET} deg")
+
+
+REQUIRE_CSV = "ratio.csv"
 
 
 # parse cli args: optional run id and optional --step for per-step detail plot
 parser = argparse.ArgumentParser()
 parser.add_argument("run_id", nargs="?", default=None,
-                    help="calibration run id; defaults to most recent run")
+                    help="calibration run id; defaults to most recent run with ratio.csv")
 parser.add_argument("--step", type=int, default=None,
                     help="show detailed geometry for the move ending at this row")
 args = parser.parse_args()
 
 
-# pick the run folder from the run id, otherwise take the most recent one
+# pick the run folder by run id (if given), otherwise the most recent folder
+# that actually contains ratio.csv (so we skip verify-only folders)
 if args.run_id is not None:
     folders = glob.glob(os.path.join(CALIBRATION_DIR, f"calibration_{args.run_id}_*"))
-    if not folders:
-        sys.exit(f"no calibration folder for run {args.run_id} in {CALIBRATION_DIR}/")
-    folder = folders[0]
 else:
-    folders = glob.glob(os.path.join(CALIBRATION_DIR, "calibration_*"))
-    if not folders:
-        sys.exit(f"no calibration folder found in {CALIBRATION_DIR}/")
-    folder = max(folders, key=os.path.getmtime)
+    folders = sorted(
+        glob.glob(os.path.join(CALIBRATION_DIR, "calibration_*")),
+        key=os.path.getmtime,
+        reverse=True,
+    )
+
+candidates = [f for f in folders if os.path.exists(os.path.join(f, REQUIRE_CSV))]
+if not candidates:
+    sys.exit(f"no calibration folder containing {REQUIRE_CSV} in {CALIBRATION_DIR}/")
+folder = candidates[0]
 
 
 print(f"folder: {folder}")
-
-# load all csv rows into a list of dicts
-csv_paths = glob.glob(os.path.join(folder, "*.csv"))
-if not csv_paths:
-    sys.exit(f"no csv found in {folder}")
-csv_path = csv_paths[0]
+csv_path = os.path.join(folder, REQUIRE_CSV)
 print(f"csv: {csv_path}")
 
-rows = []
-with open(csv_path, "r", newline="") as f:
-    reader = csv.DictReader(f)
-    for row in reader:
-        rows.append(row)
-print(f"rows: {len(rows)}")
 
-
-# detailed view of one move: --step N analyses the move from row N-1 to row N
+# detailed view of one move: --step N analyses the Nth valid consecutive-frame
+# pair (NaN frames break the chain, same convention as ratio_points)
 if args.step is not None:
-    if args.step < 1 or args.step >= len(rows):
-        sys.exit(f"step {args.step} out of range, valid: 1..{len(rows)-1}")
+    rows = []
+    with open(csv_path, "r", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            rows.append(row)
+    print(f"rows: {len(rows)}")
 
-    prev_row = rows[args.step - 1]
-    curr_row = rows[args.step]
+    valid_pairs = []
+    prev_valid = None
+    for row in rows:
+        angle = float(row["measured_angle"])
+        x = float(row["measured_x"])
+        y = float(row["measured_y"])
+        if math.isnan(angle) or math.isnan(x) or math.isnan(y):
+            prev_valid = None
+            continue
+        if prev_valid is None:
+            prev_valid = row
+            continue
+        valid_pairs.append((prev_valid, row))
+        prev_valid = row
+
+    nan_count = sum(
+        1 for row in rows if math.isnan(float(row["measured_angle"]))
+    )
+    print(f"rows: {len(rows)}, NaN: {nan_count}, valid step pairs: {len(valid_pairs)}")
+
+    if args.step < 1 or args.step > len(valid_pairs):
+        sys.exit(f"step {args.step} out of range, valid: 1..{len(valid_pairs)}")
+
+    prev_row, curr_row = valid_pairs[args.step - 1]
 
     prev_angle_raw = float(prev_row["measured_angle"])
     prev_angle = (prev_angle_raw + ARUCO_ANGLE_OFFSET + 180.0) % 360.0 - 180.0
@@ -173,111 +195,9 @@ if args.step is not None:
     sys.exit(0)
 
 
-# walk the rows and compute the angle between the previous orientation and the
-# actual movement vector
-# split the points by direction: forward (positive distance) and backward (negative distance)
-forward_points = []
-backward_points = []
-prev_angle = None
-prev_x = None
-prev_y = None
-
-for row in rows:
-    angle_raw = float(row["measured_angle"])
-    angle = (angle_raw + ARUCO_ANGLE_OFFSET + 180.0) % 360.0 - 180.0
-    x = float(row["measured_x"])
-    y = float(row["measured_y"])
-    ratio = float(row["ratio"])
-    target_distance = float(row["target_distance"])
-
-    if math.isnan(angle) or math.isnan(x) or math.isnan(y):
-        prev_angle = None
-        prev_x = None
-        prev_y = None
-        continue
-
-    if prev_angle is None:
-        prev_angle = angle
-        prev_x = x
-        prev_y = y
-        continue
-
-    # movement vector in image pixels
-    dx = x - prev_x
-    dy = y - prev_y
-
-    # image y axis points down, flip for math convention
-    dy_math = -dy
-
-    # angle of the movement vector, math convention (deg)
-    move_angle = math.degrees(math.atan2(dy_math, dx))
-
-    # signed angle between movement and previous orientation, wrapped into [-180, 180]
-    alpha = (move_angle - prev_angle + 180.0) % 360.0 - 180.0
-
-    # for backward moves the expected direction is opposite to prev_angle,
-    # so flip alpha so left/right match the forward sign convention (left=+, right=-)
-    if target_distance < 0:
-        alpha = (180.0 - alpha + 180.0) % 360.0 - 180.0
-
-    if target_distance > 0:
-        forward_points.append((ratio, alpha))
-    elif target_distance < 0:
-        backward_points.append((ratio, alpha))
-
-    prev_angle = angle
-    prev_x = x
-    prev_y = y
-
-
-# sort by ratio so the regression line plots in order
-forward_points.sort()
-backward_points.sort()
-
-print(f"forward points: {len(forward_points)}")
-print(f"backward points: {len(backward_points)}")
-
-# split (ratio, alpha) pairs into x/y arrays for numpy
-fwd_x = np.array([r for r, _ in forward_points])
-fwd_y = np.array([a for _, a in forward_points])
-bwd_x = np.array([r for r, _ in backward_points])
-bwd_y = np.array([a for _, a in backward_points])
-
-
-# linear regression for each direction: y = slope * x + intercept, plus R^2
-fwd_slope, fwd_intercept = np.polyfit(fwd_x, fwd_y, 1)
-fwd_pred = fwd_slope * fwd_x + fwd_intercept
-fwd_ss_res = np.sum((fwd_y - fwd_pred) ** 2)
-fwd_ss_tot = np.sum((fwd_y - np.mean(fwd_y)) ** 2)
-fwd_r2 = 1 - fwd_ss_res / fwd_ss_tot
-print(f"forward  fit: y = {fwd_slope:.2f} * x + {fwd_intercept:.2f}   R^2 = {fwd_r2:.4f}")
-
-bwd_slope, bwd_intercept = np.polyfit(bwd_x, bwd_y, 1)
-bwd_pred = bwd_slope * bwd_x + bwd_intercept
-bwd_ss_res = np.sum((bwd_y - bwd_pred) ** 2)
-bwd_ss_tot = np.sum((bwd_y - np.mean(bwd_y)) ** 2)
-bwd_r2 = 1 - bwd_ss_res / bwd_ss_tot
-print(f"backward fit: y = {bwd_slope:.2f} * x + {bwd_intercept:.2f}   R^2 = {bwd_r2:.4f}")
-
-
-# scatter + fit line, both directions on the same figure
-plt.figure()
-plt.scatter(fwd_x, fwd_y, color="tab:blue", label="forward (target_distance > 0) data")
-plt.plot(fwd_x, fwd_pred, color="tab:blue", linestyle="--",
-         label=f"forward fit: y={fwd_slope:.1f}x+{fwd_intercept:.1f}  R^2={fwd_r2:.3f}")
-plt.scatter(bwd_x, bwd_y, color="tab:red", label="backward (target_distance < 0) data")
-plt.plot(bwd_x, bwd_pred, color="tab:red", linestyle="--",
-         label=f"backward fit: y={bwd_slope:.1f}x+{bwd_intercept:.1f}  R^2={bwd_r2:.3f}")
-plt.axhline(y=0, color="black", linestyle=":", linewidth=0.8)
-plt.xlabel("ratio")
-plt.ylabel("angle alpha (deg)\n+ left  /  - right (math convention)")
-plt.title(f"calibration: {os.path.basename(folder)}")
-plt.legend()
-plt.grid(True)
-
-# save the figure next to the csv inside the run folder
-output_path = os.path.join(folder, "ratio_linear_regression.png")
-plt.savefig(output_path)
-print(f"saved: {output_path}")
+# default view: full ratio calibration regression for both directions
+fwd_ratio, bwd_ratio = analyse_ratio(folder)
+print(f"ratio_forward = {fwd_ratio}")
+print(f"ratio_backward = {bwd_ratio}")
 
 plt.show()
