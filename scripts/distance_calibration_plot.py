@@ -1,4 +1,4 @@
-"""Plots for linear regression models on the rotation
+"""Plot for linear regression model on the distance (mm vs duration)
     Co-author: ClaudeAI on all matplotlib graphs
 """
 
@@ -16,20 +16,20 @@ CALIBRATION_DIR = os.path.join(ROOT, "calibration_photos")
 
 # share the same fit + plot as the calibrator agent
 sys.path.insert(0, os.path.join(ROOT, "src"))
-from agents.calibrator.rotation_analysis import analyse_rotation
+from agents.calibrator.distance_analysis import analyse_distance
 
 
-REQUIRE_CSV = "rotation.csv"
+REQUIRE_CSV = "distance.csv"
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument("run_id", nargs="?", default=None,
-                    help="calibration run id; defaults to most recent run with rotation.csv")
+                    help="calibration run id; defaults to most recent run with distance.csv")
 args = parser.parse_args()
 
 
 # pick the run folder by run id (if given), otherwise the most recent folder
-# that actually contains rotation.csv (so we skip verify-only folders)
+# that actually contains distance.csv (so we skip verify-only folders)
 if args.run_id is not None:
     folders = glob.glob(os.path.join(CALIBRATION_DIR, f"calibration_{args.run_id}_*"))
 else:
@@ -47,8 +47,8 @@ folder = candidates[0]
 
 print(f"folder: {folder}")
 
-pos_slope, pos_intercept, neg_slope, neg_intercept = analyse_rotation(folder)
-print(f"CW  fit: y = {pos_slope:.2f} * x + {pos_intercept:.2f}")
-print(f"CCW fit: y = {neg_slope:.2f} * x + {neg_intercept:.2f}")
+fwd_slope, fwd_intercept, bwd_slope, bwd_intercept = analyse_distance(folder)
+print(f"forward fit (mm/s):  y = {fwd_slope:.2f} * x + {fwd_intercept:.2f}")
+print(f"backward fit (mm/s): y = {bwd_slope:.2f} * x + {bwd_intercept:.2f}")
 
 plt.show()

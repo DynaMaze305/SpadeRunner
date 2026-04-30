@@ -5,9 +5,17 @@
 .claude
 .env
 
-# photo dirs come in via compose volumes, not the image
+# photo + runtime-state dirs come in via compose volumes, not the image
 received_photos
 calibration_photos
+navigation_photos
+logger_state
+
+# host-only: grafana provisioning, plotting/dev scripts, docs
+grafana
+scripts
+README.md
+*.md
 
 # accidental pip --target installs named after stdlib modules
 asyncio

@@ -70,3 +70,24 @@ class MotionClient:
             return False
         logger.info(f"robot ack: {ack.body}")
         return True
+
+    # Sends a one-shot calibrate command to the robot.
+    # Format: calibrate <key> <value1> [value2]
+    # Doesn't move the motors — the robot just persists the values.
+    async def command_calibrate(self, key: str, *values) -> bool:
+        parts = " ".join(f"{v:g}" for v in values)
+        command = f"calibrate {key} {parts}".rstrip()
+
+        msg = Message(to=self.jid)
+        msg.set_metadata("performative", "request")
+        msg.body = command
+
+        await self.behaviour.send(msg)
+        logger.info(f"sent '{command}' to {self.jid}")
+
+        ack = await self.behaviour.receive(timeout=10)
+        if ack is None:
+            logger.error(f"no ack from robot after calibrate {key}")
+            return False
+        logger.info(f"robot ack: {ack.body}")
+        return True
