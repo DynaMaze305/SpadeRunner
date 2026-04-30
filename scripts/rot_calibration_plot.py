@@ -77,7 +77,7 @@ for row in rows:
 
 # sort by duration so the regression line plots in order
 positive_points.sort()
-negative_points.sort()
+negative_points.sort(reverse=True)
 
 print(f"positive points: {len(positive_points)}")
 print(f"negative points: {len(negative_points)}")
@@ -87,6 +87,16 @@ pos_x = np.array([d for d, _ in positive_points])
 pos_y = np.array([a for _, a in positive_points])
 neg_x = np.array([d for d, _ in negative_points])
 neg_y = np.array([a for _, a in negative_points])
+
+if len(pos_y) > 0:
+    pos_y = np.degrees(np.unwrap(np.radians(pos_y)))
+if len(neg_y) > 0:
+    neg_y = np.degrees(np.unwrap(np.radians(neg_y)))
+
+pos_x = np.abs(pos_x)
+pos_y = np.abs(pos_y)
+neg_x = np.abs(neg_x)
+neg_y = np.abs(neg_y)
 
 
 # linear regression for each direction: y = slope * x + intercept, plus R^2
