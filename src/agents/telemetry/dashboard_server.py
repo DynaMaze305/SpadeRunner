@@ -16,7 +16,7 @@ BUTTONS = [
     {"text": "Say Hello", "target_jid": f"navigator@{XMPP_DOMAIN}", "command": "hello"},
     {"text": "Stop Robot", "target_jid": f"navigator@{XMPP_DOMAIN}", "command": "stop"},
     {"text": "Reset", "target_jid": f"navigator@{XMPP_DOMAIN}", "command": "reset"},
-    {"text": "Start", "target_jid": f"{NAVIGATOR_JID}", "command": "request path"}
+    {"text": "Start", "target_jid": f"{NAVIGATOR_JID}", "command": "request path"},
 ]
 
 class Dashboard:
