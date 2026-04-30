@@ -30,6 +30,7 @@ class TelemetryAgent(agent.Agent):
                 "digital": {1: None, 2: None},
                 "analog": {0: None, 1: None, 2: None, 3: None, 4: None, 10: None},
             },
+            "battery": None,
             "motion": {
                 "speed": None,
                 "direction": None,
@@ -49,13 +50,14 @@ class TelemetryAgent(agent.Agent):
             for k in self.agent.current["sensors"]["analog"]:
                 self.agent.current["sensors"]["analog"][k] = random.random()
 
+            self.agent.current["battery"] = random.random() * 100
             self.agent.current["motion"]["speed"] = random.random()
             self.agent.current["motion"]["direction"] = random.random()
             self.agent.current["motion"]["rotation"] = random.random()
 
             sample = self.agent._make_sample()
             await self.agent.dashboard.broadcast(sample)
-            logger.info(f"[AGENT] Telemetry sample: {sample}")
+            #logger.info(f"[AGENT] Telemetry sample: {sample}")
 
     class XMPPTelemetryListener(behaviour.CyclicBehaviour):
         async def run(self):
@@ -86,7 +88,7 @@ class TelemetryAgent(agent.Agent):
 
             msg = Message(to=self.target)
             msg.set_metadata("performative", "request")
-            msg.body = f"command {self.cmd}"
+            msg.body = f"{self.cmd}"
             await self.send(msg)
             logger.info(f"[AGENT] Sent XMPP command '{self.cmd}' to {NAVIGATOR_JID}")
 
@@ -108,6 +110,8 @@ class TelemetryAgent(agent.Agent):
 
         for k, v in self.current["sensors"]["analog"].items():
             flat[f"analog_{k}"] = v
+
+        flat["battery"] = self.current["battery"]
 
         for k, v in self.current["motion"].items():
             flat[f"motion_{k}"] = v
@@ -133,8 +137,8 @@ class TelemetryAgent(agent.Agent):
 
 
 async def main():
-    jid = os.environ.get("TELEMETRY_JID", "telemetry@prosody")
-    password = os.environ.get("TELEMETRY_PASSWORD", "top_secret")
+    jid = "telemetry@prosody"#os.environ.get("TELEMETRY_JID", "telemetry@prosody")
+    password = "secret"#os.environ.get("TELEMETRY_PASSWORD", "top_secret")
 
     ag = TelemetryAgent(jid, password)
     await ag.start(auto_register=True)
