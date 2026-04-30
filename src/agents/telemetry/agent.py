@@ -21,6 +21,7 @@ NAVIGATOR_JID = os.environ.get("NAVIGATOR_JID", "navigator@prosody")
 
 
 class TelemetryAgent(agent.Agent):
+    ENV_PREFIX = "TELEMETRY"
     def __init__(self, jid, password):
         super().__init__(jid, password)
 
