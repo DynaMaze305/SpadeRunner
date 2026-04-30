@@ -2,6 +2,7 @@
 import json
 import os
 from aiohttp import web, WSMsgType
+from common.config import NAVIGATOR_JID
 
 from agents.telemetry.render.PageComponent import PageComponent
 from agents.telemetry.render.AnalogGraphComponent import AnalogGraphComponent
@@ -11,7 +12,6 @@ from agents.telemetry.render.ObstaclesComponent import ObstacleSensorsComponent
 
 
 XMPP_DOMAIN = os.environ.get("XMPP_DOMAIN", "prosody")
-NAVIGATOR_JID = os.environ.get("NAVIGATOR_JID", "navigator@isc-coordinator.lan")
 BUTTONS = [
     {"text": "Say Hello", "target_jid": f"navigator@{XMPP_DOMAIN}", "command": "hello"},
     {"text": "Stop Robot", "target_jid": f"navigator@{XMPP_DOMAIN}", "command": "stop"},

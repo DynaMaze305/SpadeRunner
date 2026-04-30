@@ -2,7 +2,6 @@
 import asyncio
 import json
 import logging
-import os
 import random
 import time
 
@@ -10,6 +9,7 @@ from aiohttp import web
 from spade import agent, behaviour
 from spade.message import Message
 
+from common.config import NAVIGATOR_JID
 from agents.telemetry.dashboard_server import Dashboard
 
 # Configure logging
@@ -17,8 +17,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("TelemetryAgent")
 
 HTTP_PORT = 8080
-NAVIGATOR_JID = os.environ.get("NAVIGATOR_JID", "navigator@prosody")
-
 
 class TelemetryAgent(agent.Agent):
     ENV_PREFIX = "TELEMETRY"
@@ -90,7 +88,7 @@ class TelemetryAgent(agent.Agent):
             msg.set_metadata("performative", "request")
             msg.body = f"{self.cmd}"
             await self.send(msg)
-            logger.info(f"[AGENT] Sent XMPP command '{self.cmd}' to {NAVIGATOR_JID}")
+            logger.info(f"[AGENT] Sent XMPP message: {msg}")
 
     # ---------- helpers ----------
 
@@ -138,7 +136,7 @@ class TelemetryAgent(agent.Agent):
 
 async def main():
     jid = "telemetry@prosody"#os.environ.get("TELEMETRY_JID", "telemetry@prosody")
-    password = "secret"#os.environ.get("TELEMETRY_PASSWORD", "top_secret")
+    password = "secret"#os.environ.get("XMPP_PASSWORD", "top_secret")
 
     ag = TelemetryAgent(jid, password)
     await ag.start(auto_register=True)
