@@ -28,8 +28,7 @@ parser.add_argument("run_id", nargs="?", default=None,
 args = parser.parse_args()
 
 
-# pick the run folder by run id (if given), otherwise the most recent folder
-# that actually contains verify_distance.csv (so we skip calibration-only folders)
+# pick the run folder: by id if given, else most recent with the right csv
 if args.run_id is not None:
     folders = glob.glob(os.path.join(CALIBRATION_DIR, f"calibration_{args.run_id}_*"))
 else:
@@ -39,7 +38,7 @@ else:
         reverse=True,
     )
 
-candidates = [f for f in folders if os.path.exists(os.path.join(f, REQUIRE_CSV))]
+candidates = [path for path in folders if os.path.exists(os.path.join(path, REQUIRE_CSV))]
 if not candidates:
     sys.exit(f"no calibration folder containing {REQUIRE_CSV} in {CALIBRATION_DIR}/")
 folder = candidates[0]
@@ -47,7 +46,9 @@ folder = candidates[0]
 
 print(f"folder: {folder}")
 
+# runs the agent's verify analysis: per-move mm error + L2 score + plot
 score = analyse_distance_verify(folder)
 print(f"L2 = {score:.2f} mm")
 
+# pops the figure in an interactive window
 plt.show()
