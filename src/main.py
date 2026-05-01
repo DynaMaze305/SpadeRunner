@@ -42,21 +42,21 @@ async def main():
     logger.info(f"Running in {mode.upper()} mode")
 
     active = []
-    # nav = await start_agent(NavigatorAgent)
-    # if nav:
-    #     active.append(nav)
-    #
-    # log_agent = await start_agent(LoggerAgent)
-    # if log_agent:
-    #     active.append(log_agent)
 
-    await run_agent(AGENTS[mode])
+    # starts the picked agent in the background (non-blocking)
+    primary = await start_agent(AGENTS[mode])
+    if primary:
+        active.append(primary)
 
-    log_agent = await start_agent(TelemetryAgent)
-    if log_agent:
-        active.append(log_agent)
+    # also starts the dashboard alongside (unless MODE was already telemetry)
+    if AGENTS[mode] is not TelemetryAgent:
+        dashboard = await start_agent(TelemetryAgent)
+        if dashboard:
+            active.append(dashboard)
 
+    logger.info(f"agents started: {[a.jid for a in active]}")
 
+    # keepalive: stops everything cleanly when any agent dies or on Ctrl+C
     try:
         while all(a.is_alive() for a in active):
             await asyncio.sleep(1)
