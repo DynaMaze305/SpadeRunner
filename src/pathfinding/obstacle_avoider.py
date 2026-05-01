@@ -1,22 +1,32 @@
 from __future__ import annotations
 
+import logging
 import math
 
 Point = tuple[int, int]
 Box = tuple[int, int, int, int]
+logger = logging.getLogger(__name__)
 
 
 class ObstacleAvoider:
-    def __init__(self, margin: int = 15):
+    def __init__(
+        self,
+        margin: int = 15,
+        robot_margin: int = 0,
+        bypass_padding: int = 0,
+    ):
         self.margin = margin
+        self.robot_margin = robot_margin
+        self.bypass_padding = bypass_padding
 
     def inflate_obstacles(self, obstacles: list[Box]) -> list[Box]:
+        total_margin = self.margin + self.robot_margin
         return [
             (
-                x1 - self.margin,
-                y1 - self.margin,
-                x2 + self.margin,
-                y2 + self.margin,
+                x1 - total_margin,
+                y1 - total_margin,
+                x2 + total_margin,
+                y2 + total_margin,
             )
             for x1, y1, x2, y2 in obstacles
         ]
@@ -61,26 +71,39 @@ class ObstacleAvoider:
         obstacle: Box,
     ) -> list[list[Point]]:
         x1, y1, x2, y2 = obstacle
+        base_margin = self.margin + self.robot_margin
+        padding_steps = [self.bypass_padding]
+        if self.bypass_padding > 0:
+            padding_steps.extend([
+                self.bypass_padding // 2,
+                0,
+            ])
 
         dx = abs(end[0] - start[0])
         dy = abs(end[1] - start[1])
 
+        routes = []
         if dx >= dy:
-            above_y = y1 - self.margin
-            below_y = y2 + self.margin
+            for padding in padding_steps:
+                bypass_margin = base_margin + padding
+                above_y = y1 - bypass_margin
+                below_y = y2 + bypass_margin
+                routes.extend([
+                    [(start[0], above_y), (end[0], above_y)],
+                    [(start[0], below_y), (end[0], below_y)],
+                ])
+            return routes
 
-            return [
-                [(start[0], above_y), (end[0], above_y)],
-                [(start[0], below_y), (end[0], below_y)],
-            ]
+        for padding in padding_steps:
+            bypass_margin = base_margin + padding
+            left_x = x1 - bypass_margin
+            right_x = x2 + bypass_margin
+            routes.extend([
+                [(left_x, start[1]), (left_x, end[1])],
+                [(right_x, start[1]), (right_x, end[1])],
+            ])
 
-        left_x = x1 - self.margin
-        right_x = x2 + self.margin
-
-        return [
-            [(left_x, start[1]), (left_x, end[1])],
-            [(right_x, start[1]), (right_x, end[1])],
-        ]
+        return routes
 
     def route_is_clear(
         self,
@@ -97,7 +120,7 @@ class ObstacleAvoider:
         self,
         center_path: list[Point],
         obstacles: list[Box],
-    ) -> list[Point]:
+    ) -> list[Point] | None:
         if not center_path:
             return []
 
@@ -123,8 +146,8 @@ class ObstacleAvoider:
                 hit_obstacle,
             )
 
-            print("[AVOIDER] hit:", start, end, hit_obstacle)
-            print("[AVOIDER] routes:", bypass_routes)
+            logger.info(f"[AVOIDER] hit: {start} {end} {hit_obstacle}")
+            logger.info(f"[AVOIDER] routes: {bypass_routes}")
 
             bypass_found = False
 
@@ -138,7 +161,9 @@ class ObstacleAvoider:
                     break
 
             if not bypass_found:
-                print("[AVOIDER] obstacle hit but no bypass route found:", hit_obstacle)
-                safe_path.append(end)
+                logger.warning(
+                    f"[AVOIDER] obstacle hit but no bypass route found: {hit_obstacle}"
+                )
+                return None
 
         return safe_path

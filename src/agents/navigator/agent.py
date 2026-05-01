@@ -83,6 +83,9 @@ class NavigatorAgent(agent.Agent):
                 run_dir=run_dir,
                 grid_detector=vision.grid,
                 localizer=localizer.localizer,
+                obstacle_margin_px=cfg.obstacle_avoidance_margin_px,
+                robot_margin_px=cfg.robot_clearance_margin_px,
+                contour_padding_px=cfg.contour_demo_padding_px,
             )
 
             orch = NavigationOrchestrator(
@@ -115,6 +118,8 @@ class NavigatorAgent(agent.Agent):
 
     async def setup(self):
         self.cfg = NavigatorConfig.from_env()
+        if not self.cfg.target_cell:
+            logger.error("[INIT] Navigator target cell is empty")
         logger.info(
             f"[INIT] Navigator ready: target={self.cfg.target_cell}, "
             f"max_steps={self.cfg.max_steps}, "

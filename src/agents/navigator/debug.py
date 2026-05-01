@@ -36,7 +36,10 @@ PATH_PANEL_BG = (255, 255, 255)
 PATH_GRID_VERTICAL = (255, 0, 0)
 PATH_GRID_HORIZONTAL = (0, 255, 0)
 PATH_LINE_COLOR = (0, 165, 255)
+PLANNED_PATH_FAINT_COLOR = (180, 210, 255)
 PATH_LINE_THICK = 4
+CONTOUR_PATH_COLOR = (255, 0, 255)
+CONTOUR_POINT_RADIUS = 6
 POSITION_DOT_COLOR = (0, 0, 255)
 POSITION_DOT_RADIUS = 8
 ARROW_COLOR = (128, 0, 128)
@@ -44,6 +47,8 @@ ARROW_LENGTH = 35
 ARROW_THICK = 2
 BLOCKED_CELL_COLOR = (80, 80, 255)
 BLOCKED_CELL_ALPHA = 0.28
+RAW_OBSTACLE_COLOR = (0, 0, 255)
+INFLATED_OBSTACLE_COLOR = (255, 0, 255)
 
 # Target-direction arrow + path info text overlay (BGR).
 TARGET_ARROW_COLOR = (0, 180, 0)
@@ -61,11 +66,17 @@ class NavigatorDebug:
         run_dir: str,
         grid_detector,
         localizer,
+        obstacle_margin_px: int = 0,
+        robot_margin_px: int = 0,
+        contour_padding_px: int = 0,
         camera: Camera | None = None,
     ) -> None:
         self.run_dir = run_dir
         self.grid_detector = grid_detector
         self.localizer = localizer
+        self.obstacle_margin_px = obstacle_margin_px
+        self.robot_margin_px = robot_margin_px
+        self.contour_padding_px = contour_padding_px
         self.camera = camera or Camera()
         os.makedirs(run_dir, exist_ok=True)
 
@@ -80,6 +91,7 @@ class NavigatorDebug:
         frame=None,
         robot_pose=None,
         path: list[str] | None = None,
+        contour_path: list[tuple[int, int]] | None = None,
     ) -> None:
         image_with_axes = self.camera.draw_axes(image) if image is not None else None
 
@@ -117,7 +129,7 @@ class NavigatorDebug:
                     grid_walls=frame.grid_walls,
                 )
 
-        path_img = self._build_path_panel(frame, robot_pose, path)
+        path_img = self._build_path_panel(frame, robot_pose, path, contour_path)
         obstacles_img = self._build_obstacles_panel(frame)
 
         # Save individual full-resolution images into individuals/step_N/
@@ -194,6 +206,7 @@ class NavigatorDebug:
         frame,
         robot_pose,
         path: list[str] | None,
+        contour_path: list[tuple[int, int]] | None = None,
     ) -> np.ndarray | None:
         if frame is None:
             return None
@@ -212,6 +225,7 @@ class NavigatorDebug:
                 canvas, frame.grid_walls, frame.x_lines, frame.y_lines,
             )
 
+        self._draw_obstacle_boxes(canvas, frame.obstacles)
         self._draw_blocked_cells(canvas, frame)
 
         # Build the visual path. The first segment starts at the robot's actual
@@ -226,18 +240,32 @@ class NavigatorDebug:
                 int(robot_pose.center[1] - by1),
             )
 
-        if path and len(path) >= 2:
-            waypoints: list[tuple[int, int]] = []
-            if local_center is not None:
-                waypoints.append(local_center)
-                cells_to_visit = path[1:]
-            else:
-                cells_to_visit = path
+        if contour_path and len(contour_path) >= 2:
+            planned_waypoints = self._path_waypoints(
+                path, local_center, frame.x_lines, frame.y_lines,
+            )
+            for a, b in zip(planned_waypoints[:-1], planned_waypoints[1:]):
+                cv2.line(canvas, a, b, PLANNED_PATH_FAINT_COLOR, 2)
 
-            for cell in cells_to_visit:
-                center = self._cell_center(cell, frame.x_lines, frame.y_lines)
-                if center is not None:
-                    waypoints.append(center)
+            for a, b in zip(contour_path[:-1], contour_path[1:]):
+                cv2.line(canvas, a, b, CONTOUR_PATH_COLOR, PATH_LINE_THICK)
+            for point in contour_path:
+                cv2.circle(canvas, point, CONTOUR_POINT_RADIUS, CONTOUR_PATH_COLOR, -1)
+
+            cv2.putText(
+                canvas,
+                "contour",
+                (contour_path[0][0] + 8, contour_path[0][1] - 8),
+                LABEL_FONT,
+                PATH_TEXT_SCALE,
+                CONTOUR_PATH_COLOR,
+                2,
+                cv2.LINE_AA,
+            )
+        elif path and len(path) >= 2:
+            waypoints = self._path_waypoints(
+                path, local_center, frame.x_lines, frame.y_lines,
+            )
 
             for a, b in zip(waypoints[:-1], waypoints[1:]):
                 cv2.line(canvas, a, b, PATH_LINE_COLOR, PATH_LINE_THICK)
@@ -303,6 +331,30 @@ class NavigatorDebug:
 
         return canvas
 
+    def _path_waypoints(
+        self,
+        path: list[str] | None,
+        local_center: tuple[int, int] | None,
+        x_lines: list[int],
+        y_lines: list[int],
+    ) -> list[tuple[int, int]]:
+        if not path:
+            return []
+
+        waypoints: list[tuple[int, int]] = []
+        if local_center is not None:
+            waypoints.append(local_center)
+            cells_to_visit = path[1:]
+        else:
+            cells_to_visit = path
+
+        for cell in cells_to_visit:
+            center = self._cell_center(cell, x_lines, y_lines)
+            if center is not None:
+                waypoints.append(center)
+
+        return waypoints
+
     def _build_obstacles_panel(self, frame):
         if frame is None:
             return None
@@ -310,9 +362,40 @@ class NavigatorDebug:
         canvas = cv2.cvtColor(frame.obstacle_mask, cv2.COLOR_GRAY2BGR)
 
         for x1, y1, x2, y2 in frame.obstacles:
-            cv2.rectangle(canvas, (x1, y1), (x2, y2), (0, 0, 255), 2)
+            cv2.rectangle(canvas, (x1, y1), (x2, y2), RAW_OBSTACLE_COLOR, 2)
+
+        self._draw_obstacle_boxes(canvas, frame.obstacles)
+        cv2.putText(
+            canvas,
+            f"raw=red inflated=magenta obstacle={self.obstacle_margin_px}px robot={self.robot_margin_px}px contour={self.contour_padding_px}px",
+            (8, 22),
+            LABEL_FONT,
+            0.45,
+            (255, 255, 255),
+            1,
+            cv2.LINE_AA,
+        )
 
         return canvas
+
+    def _draw_obstacle_boxes(
+        self,
+        canvas: np.ndarray,
+        obstacles: list[tuple[int, int, int, int]] | None = None,
+    ) -> None:
+        if obstacles is None:
+            return
+
+        h, w = canvas.shape[:2]
+        margin = self.obstacle_margin_px + self.robot_margin_px
+
+        for x1, y1, x2, y2 in obstacles:
+            ix1 = max(0, x1 - margin)
+            iy1 = max(0, y1 - margin)
+            ix2 = min(w - 1, x2 + margin)
+            iy2 = min(h - 1, y2 + margin)
+
+            cv2.rectangle(canvas, (ix1, iy1), (ix2, iy2), INFLATED_OBSTACLE_COLOR, 1)
 
     def _draw_blocked_cells(self, canvas: np.ndarray, frame) -> None:
         blocked_cells = obstacle_cells_from_frame(frame)

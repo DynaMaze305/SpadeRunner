@@ -67,7 +67,7 @@ class PathCommandConverter:
             # Image coordinates:
             # +x = right
             # +y = down
-            target_angle = math.degrees(math.atan2(dy, dx))
+            target_angle = math.degrees(math.atan2(-dy, dx))
 
             rotation = self.angle_diff(target_angle, current_angle)
 
