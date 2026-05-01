@@ -54,7 +54,8 @@ prosody/prosody-data/*
 *.key
 *.dat
 
-# Saved images
+# Saved images/data
 received_photos/*
 calibration_photos/*
 navigation_photos/*
+*.db
