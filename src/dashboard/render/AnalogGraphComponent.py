@@ -1,4 +1,4 @@
-from agents.telemetry.render.DashboardComponent import DashboardComponent
+from dashboard.render.DashboardComponent import DashboardComponent
 
 class AnalogGraphComponent(DashboardComponent):
     def render_html(self):

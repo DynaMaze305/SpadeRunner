@@ -1,11 +1,32 @@
-from agents.telemetry.render.DashboardComponent import DashboardComponent
+from dashboard.render.DashboardComponent import DashboardComponent
 
-class PageComponent(DashboardComponent):
+class BatteryGaugeComponent(DashboardComponent):
+    def render_html(self):
+        return """
+        <h2>Battery</h2>
+        <div class="battery-box">
+            <div id="battery-level" class="battery-gaugue"></div>
+        </div>
+        <div id="battery-text" style="margin-top:5px;">--%</div>
+        """
+
     def render_css(self):
         return """
-            body { background:#111; color:#eee; font-family:Arial; padding:20px; }
-            h1 { color:#4fc3f7; }
-            .box { background:#222; padding:10px; margin:10px 0; border-radius:8px; }
+            .battery-box {
+                width: 80%;
+                height: 40px;
+                border: 2px solid #fff;
+                border-radius: 5px;
+                position: relative;
+                background: #333;
+            }
+
+            .battery-gaugue {
+                height: 100%;
+                width: 0%;
+                background: #00e676;
+                transition: width 0.3s;
+            }
             """
 
     def render_js(self):

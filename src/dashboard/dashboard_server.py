@@ -4,11 +4,11 @@ import os
 from aiohttp import web, WSMsgType
 from common.config import NAVIGATOR_JID
 
-from agents.telemetry.render.PageComponent import PageComponent
-from agents.telemetry.render.AnalogGraphComponent import AnalogGraphComponent
-from agents.telemetry.render.BatteryGaugeComponent import BatteryGaugeComponent
-from agents.telemetry.render.ControlButtonsComponent import ControlButtonsComponent
-from agents.telemetry.render.ObstaclesComponent import ObstacleSensorsComponent
+from dashboard.render.PageComponent import PageComponent
+from dashboard.render.AnalogGraphComponent import AnalogGraphComponent
+from dashboard.render.BatteryGaugeComponent import BatteryGaugeComponent
+from dashboard.render.ControlButtonsComponent import ControlButtonsComponent
+from dashboard.render.ObstaclesComponent import ObstacleSensorsComponent
 
 
 XMPP_DOMAIN = os.environ.get("XMPP_DOMAIN", "prosody")
