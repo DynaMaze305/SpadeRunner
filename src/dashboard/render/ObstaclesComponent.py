@@ -57,5 +57,5 @@ class ObstacleSensorsComponent(DashboardComponent):
 
     def update_js(self):
         return """
-                updateDigitalLights(data.values);
+            updateDigitalLights(data);
         """
