@@ -43,7 +43,7 @@ async def run_agent(AgentClass, custom_jid=None, **kwargs):
     prefix = AgentClass.ENV_PREFIX
     user = os.getenv(f"{prefix}_USER")
     agent_jid = custom_jid or f"{user}@{COORDINATOR_HOST}"
-    agent_password = os.getenv(f"{prefix}_PASSWORD")
+    agent_password = os.getenv(f"XMPP_PASSWORD")
 
     logger.info(f"Starting {AgentClass.__name__} with JID: {agent_jid}")
 
