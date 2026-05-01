@@ -50,5 +50,5 @@ class BatteryGaugeComponent(DashboardComponent):
 
     def update_js(self):
         return """
-                updateBattery(data.values["battery"]);
-                """
+            updateBattery(data.battery);
+        """
