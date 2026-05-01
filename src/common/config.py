@@ -26,6 +26,7 @@ NAVIGATOR_JID = f"navigator@{COORDINATOR_HOST}"
 # Agent extern to the AlphaBot2-Pi
 TELEMETRY_JID = f"telemetry@{COORDINATOR_HOST}"
 CAMERA_JID = f"camera_agent@{COORDINATOR_HOST}"
+CALIBRATOR_JID = f"calibrator@{COORDINATOR_HOST}"
 
 def agent_jid(user: str) -> str:
     return f"{user}@{COORDINATOR_HOST}"

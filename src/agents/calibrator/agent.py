@@ -32,8 +32,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 
-# valid: ratio | rotation | distance | verify_ratio | verify_rotation | verify_distance
-CALIBRATION_MODE = os.getenv("CALIBRATION_MODE", "ratio")
+# calibration types accepted from xmpp messages: "calibrate ratio" / "calibrate rotation" / "calibrate distance"
+# each one runs the calibration sweep, pushes the new params to the bot, then runs the verification
+VALID_CALIBRATION_MODES = ("ratio", "rotation", "distance")
 
 CALIBRATION_DIR = "calibration_photos"
 
@@ -49,7 +50,7 @@ ROTATION_PWM = 15
 ROTATION_RATIO = 1.05
 
 # distance calibration: sweep durations at fixed pwm + ratio
-DISTANCE_DURATIONS = [0.5, 1.0, 1.5, 2.0]
+DISTANCE_DURATIONS = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5]
 DISTANCE_PWM = 15
 DISTANCE_RATIO = 0.0
 
@@ -69,7 +70,7 @@ MAX_CONSECUTIVE_FAILURES = 2
 class CalibratorAgent(agent.Agent):
     ENV_PREFIX = "CALIBRATOR"
 
-    class CalibrateBehaviour(behaviour.OneShotBehaviour):
+    class CalibrateBehaviour(behaviour.CyclicBehaviour):
 
         # retries fresh capture + aruco detection a few times
         async def _capture_and_detect(self):
@@ -356,43 +357,91 @@ class CalibratorAgent(agent.Agent):
                 f.write(f"{score:.4f}\n")
             logger.info(f"saved score to {score_path}")
 
-        # main entry point
-        async def run(self):
+        # one-time setup before the cyclic loop starts
+        async def on_start(self):
             self.camera = CameraClient(self)
             self.motion = MotionClient(self)
+            self.is_running = False
+            logger.info("calibrator ready, waiting for 'calibrate <ratio|rotation|distance>' commands")
 
-            # Setting up the directories
-            self.run_dir, run_id = new_run_dir(CALIBRATION_DIR, "calibration")
-            self.run_csv = os.path.join(self.run_dir, f"{CALIBRATION_MODE}.csv")
-            logger.info(f"calibration run {run_id} ({CALIBRATION_MODE}) writing to {self.run_dir}")
+        # called repeatedly: wait for an xmpp command, dispatch, repeat
+        async def run(self):
 
-            # Increment for naming
-            self.step_id = 0
-            self.consecutive_failures = 0
-
-            # initial reference frame
-            if await self.calibrate_rot_pos(target_angle=0.0, pwm=0) is None:
+            # waits for a message (10s timeout, just to keep the loop polling)
+            request = await self.receive(timeout=10)
+            if request is None:
                 return
 
-            submodes = {
+            # parse "calibrate <mode>"
+            body = (request.body or "").strip()
+            parts = body.split()
+            if len(parts) != 2 or parts[0] != "calibrate" or parts[1] not in VALID_CALIBRATION_MODES:
+                logger.warning(f"unknown command from {request.sender}: '{body}'")
+                return
+            mode = parts[1]
+            logger.info(f"received '{body}' from {request.sender}")
+
+            # mutual exclusion: reject if a calibration is already in progress
+            if self.is_running:
+                logger.warning(f"calibration busy, ignoring '{body}'")
+                return
+
+            # run the cal -> verify pair, always release the flag at the end
+            self.is_running = True
+            try:
+                await self._run_calibrate_then_verify(mode)
+            except Exception:
+                logger.exception(f"calibration {mode} failed")
+            finally:
+                self.is_running = False
+
+        # wrapper: runs the calibration sweep, then the verification, in a shared run folder
+        async def _run_calibrate_then_verify(self, mode: str):
+
+            # picks the right pair of methods for this mode
+            calibration_runners = {
                 "ratio": self.run_ratio_calibration,
                 "rotation": self.run_rotation_calibration,
                 "distance": self.run_distance_calibration,
-                "verify_ratio": self.run_ratio_verification,
-                "verify_rotation": self.run_rotation_verification,
-                "verify_distance": self.run_distance_verification,
             }
-            runner = submodes.get(CALIBRATION_MODE)
-            if runner is None:
-                logger.error(
-                    f"unknown CALIBRATION_MODE '{CALIBRATION_MODE}', valid: {list(submodes)}"
-                )
-                return
-            await runner()
+            verify_runners = {
+                "ratio": self.run_ratio_verification,
+                "rotation": self.run_rotation_verification,
+                "distance": self.run_distance_verification,
+            }
+            run_calibration = calibration_runners[mode]
+            run_verification = verify_runners[mode]
 
-        async def setup(self):
-            pass
+            # one shared folder for both csvs, both plots, score.txt, and step images
+            self.run_dir, run_id = new_run_dir(CALIBRATION_DIR, f"calibration_{mode}")
+            logger.info(f"calibration run {run_id} ({mode}) writing to {self.run_dir}")
+
+            # reset per-run counters (image filenames stay unique across phases)
+            self.step_id = 0
+            self.consecutive_failures = 0
+
+            # phase 1: calibration sweep + push the new params to the bot
+            self.run_csv = os.path.join(self.run_dir, f"{mode}.csv")
+            logger.info(f"phase 1/2: {mode} calibration")
+            if await self.calibrate_rot_pos(target_angle=0.0, pwm=0) is None:
+                return
+            await run_calibration()
+
+            # if phase 1 hit the abort threshold, the camera/marker is broken
+            # so phase 2 would just waste another ~5s on a guaranteed failure
+            if self.consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                logger.error(f"phase 1 aborted, skipping phase 2 (camera/marker broken)")
+                return
+
+            # phase 2: verification with the new calibrated values
+            self.run_csv = os.path.join(self.run_dir, f"verify_{mode}.csv")
+            logger.info(f"phase 2/2: {mode} verification")
+            if await self.calibrate_rot_pos(target_angle=0.0, pwm=0) is None:
+                return
+            await run_verification()
+
+            logger.info(f"done: {mode} calibration + verification, run {run_id}")
 
     async def setup(self):
-        logger.info("calibrator agent ready")
+        logger.info("calibrator agent starting")
         self.add_behaviour(self.CalibrateBehaviour())
