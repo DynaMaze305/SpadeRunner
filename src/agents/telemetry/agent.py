@@ -10,7 +10,7 @@ from spade import agent, behaviour
 from spade.message import Message
 
 from common.config import NAVIGATOR_JID
-from agents.telemetry.dashboard_server import Dashboard
+from dashboard.dashboard_server import Dashboard
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
