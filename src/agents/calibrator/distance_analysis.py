@@ -1,7 +1,5 @@
-"""Linear regression + plot for the distance calibration and verification.
-
-Called by the calibrator agent right after each distance run, and by the
-matching scripts in scripts/ when the operator wants to re-render an old run.
+"""linear regression + L2 scoring for distance moves, with matplotlib plots
+called by the calibrator agent and by the matching scripts/
 """
 
 import csv
@@ -11,7 +9,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 
-from common.calibration_math import (
+from agents.calibrator.calibration_math import (
     MM_PER_PIXEL,
     distance_errors,
     distance_points,
@@ -29,24 +27,25 @@ def _read_csv(folder, name):
         return list(csv.DictReader(f))
 
 
-# fits (duration, distance_mm) for forward and backward moves,
-# saves the scatter + regression figure, returns
-# (fwd_slope, fwd_intercept, bwd_slope, bwd_intercept) in mm/s
+# fits the (duration, distance_mm) data and plots the regression
 def analyse_distance(folder):
+
+    # loads the calibration rows
     rows = _read_csv(folder, "distance.csv")
     forward, backward = distance_points(rows)
 
-    # convert pixel distance -> mm, abs duration so backward fit also gives positive slope
-    fwd_x = np.array([t for t, _ in forward])
-    fwd_y = np.array([d * MM_PER_PIXEL for _, d in forward])
-    bwd_x = np.array([abs(t) for t, _ in backward])
-    bwd_y = np.array([d * MM_PER_PIXEL for _, d in backward])
+    # converts pixel distance to mm and uses abs duration for backward
+    fwd_x = np.array([duration for duration, distance_px in forward])
+    fwd_y = np.array([distance_px * MM_PER_PIXEL for duration, distance_px in forward])
+    bwd_x = np.array([abs(duration) for duration, distance_px in backward])
+    bwd_y = np.array([distance_px * MM_PER_PIXEL for duration, distance_px in backward])
 
+    # does linear regression on each direction
     fwd_slope, fwd_intercept, fwd_r2 = linear_fit(fwd_x, fwd_y)
     bwd_slope, bwd_intercept, bwd_r2 = linear_fit(bwd_x, bwd_y)
 
-    fwd_pred = fwd_slope * fwd_x + fwd_intercept
-    bwd_pred = bwd_slope * bwd_x + bwd_intercept
+    fwd_line = fwd_slope * fwd_x + fwd_intercept
+    bwd_line = bwd_slope * bwd_x + bwd_intercept
 
     logger.info(
         f"forward fit (mm/s): y={fwd_slope:.2f}x+{fwd_intercept:.2f}, R^2={fwd_r2:.3f}"
@@ -55,12 +54,13 @@ def analyse_distance(folder):
         f"backward fit (mm/s): y={bwd_slope:.2f}x+{bwd_intercept:.2f}, R^2={bwd_r2:.3f}"
     )
 
+    # builds the regression plot
     plt.figure()
     plt.scatter(fwd_x, fwd_y, color="tab:blue", label="forward duration (>0) data")
-    plt.plot(fwd_x, fwd_pred, color="tab:blue", linestyle="--",
+    plt.plot(fwd_x, fwd_line, color="tab:blue", linestyle="--",
              label=f"forward fit: y={fwd_slope:.1f}x+{fwd_intercept:.1f}  R^2={fwd_r2:.3f}")
     plt.scatter(bwd_x, bwd_y, color="tab:red", label="backward |duration| data")
-    plt.plot(bwd_x, bwd_pred, color="tab:red", linestyle="--",
+    plt.plot(bwd_x, bwd_line, color="tab:red", linestyle="--",
              label=f"backward fit: y={bwd_slope:.1f}x+{bwd_intercept:.1f}  R^2={bwd_r2:.3f}")
     plt.xlabel("duration (s)")
     plt.ylabel("distance travelled (mm)")
@@ -68,6 +68,7 @@ def analyse_distance(folder):
     plt.legend()
     plt.grid(True)
 
+    # saves the figure in the run folder
     output_path = os.path.join(folder, "distance_linear_regression.png")
     plt.savefig(output_path)
     logger.info(f"saved: {output_path}")
@@ -75,10 +76,13 @@ def analyse_distance(folder):
     return fwd_slope, fwd_intercept, bwd_slope, bwd_intercept
 
 
-# computes per-move distance errors (|target| - actual_mm), saves a scatter +
-# horizontal L2 line, returns the L2 score in mm
+# scores the verification moves with L2 and plots the per-move error
 def analyse_distance_verify(folder):
+
+    # loads the verification rows
     rows = _read_csv(folder, "verify_distance.csv")
+
+    # computes per-move errors and the overall L2 score
     errors = distance_errors(rows)
     score = l2_score(errors)
 
@@ -86,6 +90,7 @@ def analyse_distance_verify(folder):
 
     xs = np.arange(1, len(errors) + 1)
 
+    # builds the L2 plot
     plt.figure()
     plt.scatter(xs, errors, color="tab:blue", label="per-move error")
     plt.axhline(y=0, color="black", linestyle=":", linewidth=0.8)
@@ -98,6 +103,7 @@ def analyse_distance_verify(folder):
     plt.legend()
     plt.grid(True)
 
+    # saves the figure in the run folder
     output_path = os.path.join(folder, "distance_verification.png")
     plt.savefig(output_path)
     logger.info(f"saved: {output_path}")
