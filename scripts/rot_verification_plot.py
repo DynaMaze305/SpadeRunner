@@ -5,7 +5,6 @@
 
 import csv
 import glob
-import math
 import os
 import sys
 
@@ -17,83 +16,67 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 CALIBRATION_DIR = os.path.join(ROOT, "calibration_photos")
 
+# share the canonical agent-driven plot + the grouping helper
+sys.path.insert(0, os.path.join(ROOT, "src"))
+from agents.calibrator.rotation_analysis import analyse_rotation_verify
+from agents.calibrator.calibration_math import rotation_diffs_by_target
+from common.config import ARUCO_ANGLE_OFFSET
+
+
+REQUIRE_CSV = "verify_rotation.csv"
+
 
 # CLI args:  <run_id>  --center <target_angle>
 # run_id picks the calibration folder, --center adds a Gaussian-style detail plot for one target
 run_id = None
 center = None
-argi = 1
-while argi < len(sys.argv):
-    if sys.argv[argi] == "--center":
-        center = float(sys.argv[argi + 1])
-        argi += 2
+arg_index = 1
+while arg_index < len(sys.argv):
+    if sys.argv[arg_index] == "--center":
+        center = float(sys.argv[arg_index + 1])
+        arg_index += 2
     else:
-        run_id = sys.argv[argi]
-        argi += 1
+        run_id = sys.argv[arg_index]
+        arg_index += 1
 
 
-# pick the run folder from the run id, otherwise take the most recent one
+# pick the run folder: by id if given, else most recent with the right csv
 if run_id is not None:
     folders = glob.glob(os.path.join(CALIBRATION_DIR, f"calibration_{run_id}_*"))
-    if not folders:
-        sys.exit(f"no calibration folder for run {run_id} in {CALIBRATION_DIR}/")
-    folder = folders[0]
 else:
-    folders = glob.glob(os.path.join(CALIBRATION_DIR, "calibration_*"))
-    if not folders:
-        sys.exit(f"no calibration folder found in {CALIBRATION_DIR}/")
-    folder = max(folders, key=os.path.getmtime)
+    folders = sorted(
+        glob.glob(os.path.join(CALIBRATION_DIR, "calibration_*")),
+        key=os.path.getmtime,
+        reverse=True,
+    )
+
+candidates = [path for path in folders if os.path.exists(os.path.join(path, REQUIRE_CSV))]
+if not candidates:
+    sys.exit(f"no calibration folder containing {REQUIRE_CSV} in {CALIBRATION_DIR}/")
+folder = candidates[0]
 
 
 print(f"folder: {folder}")
 
-# load all csv rows into a list of dicts
-csv_paths = glob.glob(os.path.join(folder, "*.csv"))
-if not csv_paths:
-    sys.exit(f"no csv found in {folder}")
-csv_path = csv_paths[0]
-print(f"csv: {csv_path}")
+# canonical agent-driven per-direction plot (saves rotation_verification.png)
+score = analyse_rotation_verify(folder)
+print(f"total L2 = {score:.2f} deg")
 
+
+# --- per-target stats + optional distribution detail ---
+
+# re-load the csv so we can group diffs by target and compute stats below
+csv_path = os.path.join(folder, REQUIRE_CSV)
 rows = []
 with open(csv_path, "r", newline="") as f:
     reader = csv.DictReader(f)
     for row in reader:
         rows.append(row)
-print(f"rows: {len(rows)}")
 
+# groups[target] = list of measured rotation diffs for that target
+groups = rotation_diffs_by_target(rows, ARUCO_ANGLE_OFFSET)
 
-# walk the rows and group every measured rotation diff by its target angle
-groups = {}
-prev_angle = None
-
-for row in rows:
-    angle = float(row["measured_angle"])
-    target = float(row["target_angle"])
-
-    if math.isnan(angle):
-        prev_angle = None
-        continue
-
-    if prev_angle is None:
-        prev_angle = angle
-        continue
-
-    # wrap the diff into [-180, 180] then push the sign to match the target direction
-    diff = (angle - prev_angle + 180.0) % 360.0 - 180.0
-    if target > 0 and diff < 0:
-        diff += 360.0
-    elif target < 0 and diff > 0:
-        diff -= 360.0
-    prev_angle = angle
-
-    # the initial reference row has target = 0, skip it
-    if target == 0:
-        continue
-
-    groups.setdefault(target, []).append(diff)
-
-
-# stats per target: mean, std, bias vs target, worst error
+# per-target stats table: trial count, mean diff, std, bias, max abs error
 print()
 print("target  n   mean      std     bias      max_abs_err")
 for target in sorted(groups):
@@ -105,59 +88,41 @@ for target in sorted(groups):
     print(f"{target:+6.1f}  {len(diffs):2d}  {mean:+7.3f}  {std:6.3f}  {bias:+7.3f}  {max_abs_err:7.3f}")
 
 
-colors = ["tab:blue", "tab:red", "tab:green", "tab:orange", "tab:purple"]
-
-# if --center was given, build a side-by-side figure: scatter on the left, distribution on the right
+# --center: distribution detail (mean line, ±1σ, target ref, Gaussian curve, stats box)
 if center is not None:
     if center not in groups:
         sys.exit(f"no data for target {center}, available: {sorted(groups)}")
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-else:
-    fig, ax1 = plt.subplots(figsize=(8, 6))
-    ax2 = None
 
-# left plot: every measured diff against its repetition number, with the target as a dashed line
-for i, target in enumerate(sorted(groups)):
-    diffs = groups[target]
-    xs = np.arange(1, len(diffs) + 1)
-    color = colors[i % len(colors)]
-    ax1.scatter(xs, diffs, color=color, label=f"target {target:+.1f}° (n={len(diffs)})")
-    ax1.axhline(target, color=color, linestyle="--", alpha=0.5)
-
-ax1.set_xlabel("repetition")
-ax1.set_ylabel("measured rotation diff (deg)")
-ax1.set_title(f"rotation verification: {os.path.basename(folder)}")
-ax1.set_ylim(-180, 180)
-ax1.legend()
-ax1.grid(True)
-
-
-# right plot: distribution detail for the chosen target — mean line, ±1σ, target ref, Gaussian curve, stats box
-if ax2 is not None:
+    # stats for this single target
     diffs = np.array(groups[center])
-    n = len(diffs)
+    count = len(diffs)
     mean = diffs.mean()
     std = diffs.std()
     bias = mean - center
-    dot_color = colors[sorted(groups).index(center) % len(colors)]
+
+    # horizontal scatter of measured diffs at this target
+    fig, ax2 = plt.subplots(figsize=(8, 6))
 
     # tiny vertical jitter so dots with the same value don't overlap
-    jitter_y = np.random.uniform(-0.05, 0.05, n)
-    ax2.scatter(diffs, jitter_y, color=dot_color, alpha=0.8)
+    jitter_y = np.random.uniform(-0.05, 0.05, count)
+    ax2.scatter(diffs, jitter_y, color="tab:blue", alpha=0.8)
 
-    ax2.axvline(mean, color=dot_color, linestyle="-", linewidth=1.5, label=f"mean = {mean:+.2f}")
-    ax2.axvline(mean + std, color=dot_color, linestyle="--", alpha=0.6, label=f"±1σ = {std:.2f}")
-    ax2.axvline(mean - std, color=dot_color, linestyle="--", alpha=0.6)
+    # vertical lines: mean, ±1σ, target reference
+    ax2.axvline(mean, color="tab:blue", linestyle="-", linewidth=1.5, label=f"mean = {mean:+.2f}")
+    ax2.axvline(mean + std, color="tab:blue", linestyle="--", alpha=0.6, label=f"±1σ = {std:.2f}")
+    ax2.axvline(mean - std, color="tab:blue", linestyle="--", alpha=0.6)
     ax2.axvline(center, color="black", linestyle=":", alpha=0.7, label=f"target = {center:+.1f}")
 
+    # overlay a gaussian centered on the mean for visual reference
     if std > 0:
         x_curve = np.linspace(center - 50, center + 50, 400)
         pdf = np.exp(-((x_curve - mean) ** 2) / (2 * std ** 2))
         pdf_y = 0.5 + pdf * 0.4
         ax2.plot(x_curve, pdf_y, color="gray", alpha=0.7, label="Gaussian PDF")
 
+    # stats summary box, top-left of the figure
     stats_text = (
-        f"n = {n}\n"
+        f"n = {count}\n"
         f"mean = {mean:+.3f}\n"
         f"std  = {std:.3f}\n"
         f"bias = {bias:+.3f}\n"
@@ -176,11 +141,10 @@ if ax2 is not None:
     ax2.legend(loc="upper right", fontsize=8)
     ax2.grid(True, axis="x")
 
+    plt.tight_layout()
+    detail_path = os.path.join(folder, "rotation_verification_detail.png")
+    plt.savefig(detail_path)
+    print(f"saved: {detail_path}")
 
-# save the figure next to the csv inside the run folder
-plt.tight_layout()
-output_path = os.path.join(folder, "rotation_verification.png")
-plt.savefig(output_path)
-print(f"saved: {output_path}")
 
 plt.show()

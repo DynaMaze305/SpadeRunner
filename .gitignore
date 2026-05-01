@@ -40,7 +40,7 @@ coverage.xml
 *.cover
 
 # Environment variables
-.env
+.env*
 
 # Editors
 .idea/
@@ -48,6 +48,14 @@ coverage.xml
 *.swp
 *.swo 
 
+# Prosody ignore
+prosody/prosody-data/*
+*.crt
+*.key
+*.dat
+
+# Saved images/data
 received_photos/*
 calibration_photos/*
 navigation_photos/*
+*.db

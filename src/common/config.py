@@ -6,7 +6,7 @@
 
 import os
 
-COORDINATOR_HOST = os.getenv("COORDINATOR_HOST", "isc-coordinator2.lan")
+COORDINATOR_HOST = os.getenv("XMPP_DOMAIN", "isc-coordinator2.lan")
 ROBOT_NUM = os.getenv("ROBOT_NUM", "1")
 
 ARUCO_IDS = {"1": 12, "3": 8}
@@ -17,11 +17,16 @@ ARUCO_ID = ARUCO_IDS[ROBOT_NUM]
 ARUCO_ANGLE_OFFSETS = {"1": 180.0, "3": 0.0}
 ARUCO_ANGLE_OFFSET = ARUCO_ANGLE_OFFSETS[ROBOT_NUM]
 
+# Agent on the AlphaBot2-Pi
 ROBOT_JID = f"motion-alphabot2{ROBOT_NUM}-agent@{COORDINATOR_HOST}"
-CAMERA_JID = f"camera_agent@{COORDINATOR_HOST}"
-LOGGER_JID = f"logger@{COORDINATOR_HOST}"
-NAVIGATOR_JID = os.getenv("NAVIGATOR_JID", f"navigator@{COORDINATOR_HOST}")
+SENSORS_JID = f"sensors-alphabot2{ROBOT_NUM}-agent@{COORDINATOR_HOST}"
+PICAMERA_JID = f"camera-alphabot2{ROBOT_NUM}-agent@'{COORDINATOR_HOST}"
+NAVIGATOR_JID = f"navigator@{COORDINATOR_HOST}"
 
+# Agent extern to the AlphaBot2-Pi
+TELEMETRY_JID = f"telemetry@{COORDINATOR_HOST}"
+CAMERA_JID = f"camera_agent@{COORDINATOR_HOST}"
+CALIBRATOR_JID = f"calibrator@{COORDINATOR_HOST}"
 
 def agent_jid(user: str) -> str:
     return f"{user}@{COORDINATOR_HOST}"

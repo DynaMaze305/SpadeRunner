@@ -2,11 +2,51 @@
 # environment variable have been moved to the .env file
 
 services:
+  # To test localy the dashboard
+  prosody:
+    build:
+      context: ./prosody
+      dockerfile: Dockerfile
+    container_name: spaderunner-prosody
+    ports:
+      - "5222:5222"  # XMPP client connections
+      - "5269:5269"  # Server-to-server connections
+      - "5280:5280"  # HTTP binding / BOSH (if enabled)
+    volumes:
+      - ./prosody/prosody-config:/etc/prosody   # Place your custom configuration files here
+      - ./prosody/prosody-data:/var/lib/prosody   # Persistent data storage
+
+    command: ["prosody"]
   # Main application service
   app:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: spaderunner-app
+    volumes:
+      - .:/app
+      - ./received_photos:/app/received_photos
+      - ./calibration_photos:/app/calibration_photos
+      - ./navigation_photos:/app/navigation_photos
+      - ./logger_state:/app/logger_state
+
+    extra_hosts:
+      - "isc-coordinator.lan:192.168.88.250"
+      - "isc-coordinator2.lan:192.168.88.226"
+#      - "isc-coordinator2.lan:192.168.31.163"
+    env_file:
+      - .env
+    stdin_open: true # to let the container open to external signal
+    tty: true # enable "keep the container running"
+    ports:
+      - "8080:8080"
+
+  # For execution
+  alphabot:
+    build:
+      context: .
+      dockerfile: Dockerfile.AlphaBot2
+    container_name: spaderunner-agent
     volumes:
       - .:/app
       - ./received_photos:/app/received_photos
@@ -23,19 +63,28 @@ services:
       - .env
     stdin_open: true # to let the container open to external signal
     tty: true # enable "keep the container running"
+  local:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    container_name: spaderunner-agent
+    volumes:
+      - .:/app
+      - ./received_photos:/app/received_photos
+      - ./calibration_photos:/app/calibration_photos
+      - ./navigation_photos:/app/navigation_photos
+      - ./logger_state:/app/logger_state
+    extra_hosts:
+      - "isc-coordinator.lan:192.168.88.250"
+      - "isc-coordinator2.lan:192.168.88.226"
+    env_file:
+      - .env
+    stdin_open: true # to let the container open to external signal
+    tty: true # enable "keep the container running"
+    ports:
+      - "8080:8080"
 
-  # Grafana dashboard. Reads the live path image from the LoggerAgent's HTTP
-  # endpoint (port 8080 on host) and exposes a Start button that POSTs to the
-  # same endpoint to trigger a navigation.
-  # Disabled: re-enable when the logger/grafana flow is wanted again.
-  # grafana:
-  #   image: grafana/grafana:latest
-  #   network_mode: "host"
-  #   environment:
-  #     - GF_AUTH_ANONYMOUS_ENABLED=true
-  #     - GF_AUTH_ANONYMOUS_ORG_ROLE=Editor
-  #     - GF_PANELS_DISABLE_SANITIZE_HTML=true
-  #     - GF_SERVER_HTTP_PORT=3000
-  #   volumes:
-  #     - ./grafana/provisioning:/etc/grafana/provisioning:ro
-  #     - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+volumes:
+  prosody_data:
+  prosody_config:
+  prosody_logs:

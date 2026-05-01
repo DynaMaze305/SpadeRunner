@@ -135,6 +135,8 @@ class MazeVisionPipeline:
         # New maze dict: refreshed `cropped` slice, every other field reused.
         maze = dict(cached.maze)
         maze["cropped"] = cropped
+        obstacle_mask = detect_black_mask(cropped)
+        obstacles = extract_obstacles_from_mask(obstacle_mask)
 
         return VisionFrame(
             image=image,
@@ -146,6 +148,6 @@ class MazeVisionPipeline:
             n_rows=cached.n_rows,
             n_cols=cached.n_cols,
             grid_walls=cached.grid_walls,
-            obstacle_mask=cached.obstacle_mask,
-            obstacles=cached.obstacles
+            obstacle_mask=obstacle_mask,
+            obstacles=obstacles,
         )

@@ -1,4 +1,4 @@
-"""Plots for linear regression models on the rotation
+"""Plot for distance verification (per-trial mm error + L2 score)
     Co-author: ClaudeAI on all matplotlib graphs
 """
 
@@ -14,17 +14,17 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 CALIBRATION_DIR = os.path.join(ROOT, "calibration_photos")
 
-# share the same fit + plot as the calibrator agent
+# share the same scoring + plot as the calibrator agent
 sys.path.insert(0, os.path.join(ROOT, "src"))
-from agents.calibrator.rotation_analysis import analyse_rotation
+from agents.calibrator.distance_analysis import analyse_distance_verify
 
 
-REQUIRE_CSV = "rotation.csv"
+REQUIRE_CSV = "verify_distance.csv"
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument("run_id", nargs="?", default=None,
-                    help="calibration run id; defaults to most recent run with rotation.csv")
+                    help="calibration run id; defaults to most recent run with verify_distance.csv")
 args = parser.parse_args()
 
 
@@ -46,12 +46,9 @@ folder = candidates[0]
 
 print(f"folder: {folder}")
 
-# runs the agent's calibration analysis: linear regression + saves the plot
-pos_slope, pos_intercept, neg_slope, neg_intercept = analyse_rotation(folder)
-
-# print the fit so we can copy/paste the numbers if needed
-print(f"CW  fit: y = {pos_slope:.2f} * x + {pos_intercept:.2f}")
-print(f"CCW fit: y = {neg_slope:.2f} * x + {neg_intercept:.2f}")
+# runs the agent's verify analysis: per-move mm error + L2 score + plot
+score = analyse_distance_verify(folder)
+print(f"L2 = {score:.2f} mm")
 
 # pops the figure in an interactive window
 plt.show()

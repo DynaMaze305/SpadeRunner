@@ -1,110 +1,134 @@
-"""
-    PWM calibration:
-    1) request a photo from the ceiling camera (initial reference)
-    2) for each (target_angle, pwm) pair:
-       - command robot: rotation <signed_target_angle> <pwm>
-         (robot derives duration internally from its target deg/sec)
-       - request a new photo
-       - measure marker angle, compute delta vs previous, log row
-
-    Inspired by the runner.py from Berk Buzcu
+"""calibrator agent: runs sweeps + regressions, or repeats moves to score the calibration
+Inspired by the runner.py from Berk Buzcu
 """
 
-import os
-import logging
+import asyncio
 import datetime
+import logging
+import os
 
 from spade import agent, behaviour
 
-from vision.aruco_detector import ArucoDetector
+from agents.calibrator.distance_analysis import (
+    analyse_distance,
+    analyse_distance_verify,
+)
 from agents.calibrator.log import log_row
+from agents.calibrator.ratio_analysis import analyse_ratio, analyse_ratio_verify
+from agents.calibrator.rotation_analysis import (
+    analyse_rotation,
+    analyse_rotation_verify,
+)
+
 from common.camera_client import CameraClient
 from common.config import ARUCO_ID
 from common.motion_client import MotionClient
 from common.run_dir import new_run_dir
 
+from vision.aruco_detector import ArucoDetector
+
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# selected at launch via env var (rotation | ratio | speed | curve)
-CALIBRATION_MODE = os.getenv("CALIBRATION_MODE", "ratio")
-LOCKED_RATIO = float(os.getenv("RATIO", "1.0"))
+
+# calibration types accepted from xmpp messages: "calibrate ratio" / "calibrate rotation" / "calibrate distance"
+# each one runs the calibration sweep, pushes the new params to the bot, then runs the verification
+VALID_CALIBRATION_MODES = ("ratio", "rotation", "distance")
 
 CALIBRATION_DIR = "calibration_photos"
 
-# toggle to run every calibration loop forward + backward, or forward only
-BI_DIRECTION = True
-DIRECTIONS = (1, -1) if BI_DIRECTION else (1,)
 
-# rotation mode
-# TARGET_ANGLES = [30, 60, 90, 120, 180, -30, -60, -90, -120, -180]
-# PWM_VALUES = [10, 15, 20, 25, 30]
+# ratio calibration: sweep ratios at a fixed short distance
+RATIOS = [0.99, 1.0, 1.01, 1.02, 1.03, 1.04, 1.05]
+RATIO_DISTANCE_MM = 100
+RATIO_PWM = 20
 
+# rotation calibration: sweep durations at fixed pwm + ratio
 ROTATION_DURATIONS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
 ROTATION_PWM = 15
 ROTATION_RATIO = 1.05
 
-# rotation verification mode
-VERIFICATION_ANGLES = [90, 90, 90, 90, 90]
-# VERIFICATION_ANGLES = [180, 180, 180, 180, 180]
-# VERIFICATION_ANGLES = [30] * 2
+# distance calibration: sweep durations at fixed pwm + ratio
+DISTANCE_DURATIONS = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5]
+DISTANCE_PWM = 15
+DISTANCE_RATIO = 0.0
 
-# ratio mode
-FIXED_DISTANCE = 200
-DURATION = None
-RATIOS = [0.99, 1.0, 1.01, 1.02, 1.03, 1.04, 1.05]
-FIXED_PWM = 20
+# verifications
+VERIFY_RATIO_TRIALS = 5
+VERIFY_DISTANCE_TRIALS = 5
+VERIFY_DISTANCE_MM = 200
+VERIFY_ROTATION_CYCLES = 4   # each cycle = +90 then -90, so 8 moves total
+VERIFY_ROTATION_ANGLE = 90
 
-# speed mode
-SPEED_DURATION = 2
-SPEED_PWM = 20
+# detection retry: tries N times then aborts after K consecutive misses
+MAX_DETECT_ATTEMPTS = 3
+RETRY_DELAY_S = 0.2
+MAX_CONSECUTIVE_FAILURES = 2
 
-# curve mode
-CURVE_PWM = 15
-CURVE_DURATIONS = [1.0]
-CURVE_RATIO = 1.05
-
-# distance mode
-DISTANCES = [200, 150, 200]
-DISTANCES_RATIO = 1.01
-DISTANCES_PWM = 15
-
-
-# repeats the whole calibration loop N times to gather more samples
-MULTIPLY = 1
 
 class CalibratorAgent(agent.Agent):
     ENV_PREFIX = "CALIBRATOR"
 
-    class CalibrateBehaviour(behaviour.OneShotBehaviour):
+    class CalibrateBehaviour(behaviour.CyclicBehaviour):
 
-        # Requests a photo, measures the rotation + position, logs the row
+        # retries fresh capture + aruco detection a few times
+        async def _capture_and_detect(self):
+            step_label = f"step {self.step_id}"
+            target_path = os.path.join(self.run_dir, f"{self.step_id}.jpg")
+            image_path = None
+
+            # blur is the usual cause, so retrying with a new photo helps
+            for attempt in range(MAX_DETECT_ATTEMPTS):
+
+                # asks the camera agent for a fresh photo
+                capture = await self.camera.capture(step_label, target_path)
+                if capture is None:
+                    logger.warning(
+                        f"[step {self.step_id}] capture failed "
+                        f"(attempt {attempt + 1}/{MAX_DETECT_ATTEMPTS})"
+                    )
+                else:
+                    _, image_path = capture
+
+                    # runs aruco detection on the photo
+                    aruco = ArucoDetector()
+                    pose = aruco.detect_qr_angle_pose(image_path, ARUCO_ID)
+                    if pose is not None:
+                        return pose, image_path
+                    logger.warning(
+                        f"[step {self.step_id}] no marker "
+                        f"(attempt {attempt + 1}/{MAX_DETECT_ATTEMPTS})"
+                    )
+
+                # small delay before the next try
+                if attempt < MAX_DETECT_ATTEMPTS - 1:
+                    await asyncio.sleep(RETRY_DELAY_S)
+
+            return None, image_path
+
+        # captures a frame, logs the row, aborts if too many misses in a row
         async def calibrate_rot_pos(self, target_angle: float = 0.0, pwm: int = 0,
                                     target_distance: float = 0.0, duration: int = 0,
                                     ratio: float = 0.0):
-
-            # Requests a phot through the helper function
-            step_label = f"step {self.step_id}"
-            target_path = os.path.join(self.run_dir, f"{self.step_id}.jpg")
-            capture = await self.camera.capture(step_label, target_path)
-
-            if capture is None:
-                logger.error(f"NO image for step {self.step_id}")
-                return None
-            _, image_path = capture
+            pose, image_path = await self._capture_and_detect()
 
             now = datetime.datetime.now()
             timestamp = now.isoformat(timespec="seconds")
 
-            # Get the robot rotation + position using the vision lib
-            aruco = ArucoDetector()
-            pose = aruco.detect_qr_angle_pose(image_path, ARUCO_ID)
+            # fail: log NaN so the csv stays lined up with the moves the bot did
             if pose is None:
-                logger.warning(f"[step {self.step_id}] no marker detected — NaN")
+                logger.error(
+                    f"[step {self.step_id}] detection failed after "
+                    f"{MAX_DETECT_ATTEMPTS} attempts — NaN"
+                )
                 measured_angle = float("nan")
                 x = float("nan")
                 y = float("nan")
                 pose = {"angle_deg": measured_angle, "x": x, "y": y}
+                self.consecutive_failures += 1
+
+            # success: log the real values
             else:
                 measured_angle = pose["angle_deg"]
                 x = pose["x"]
@@ -114,11 +138,13 @@ class CalibratorAgent(agent.Agent):
                     f"duration={duration} ratio={ratio} "
                     f"measured={measured_angle:+.2f} x={x:+.1f} y={y:+.1f}"
                 )
+                self.consecutive_failures = 0
 
+            # writes the row to the csv
             log_row(
                 self.run_csv,
                 timestamp,
-                image_path,
+                image_path or "",
                 target_angle,
                 pwm,
                 measured_angle,
@@ -128,129 +154,294 @@ class CalibratorAgent(agent.Agent):
                 x, y,
             )
             self.step_id += 1
+
+            # K misses in a row -> camera/marker broken, abort
+            if self.consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                logger.error(
+                    f"aborting: {self.consecutive_failures} consecutive "
+                    f"detection failures (camera/marker likely broken)"
+                )
+                return None
             return pose
 
-        # moves back and forth a fixed distance to test the left/right ratio
+        # test different ratio value and evaluate teh best one
         async def run_ratio_calibration(self):
-            # overriding example
-            # RATIOS = [x / 100 for x in range(100, 105)]
-
-            logger.info(f"mode: ratio — distance={FIXED_DISTANCE}, ratios={RATIOS}, duration={DURATION}, pwm={FIXED_PWM}")
-
+            logger.info(
+                f"mode: ratio — distance={RATIO_DISTANCE_MM}mm, "
+                f"ratios={RATIOS}, pwm={RATIO_PWM}"
+            )
+            # loops through ratios in the ratio list
             for ratio in RATIOS:
-                # forward then backward so the robot returns to the starting point
-                for direction in DIRECTIONS:
-                    distance = FIXED_DISTANCE * direction
-                    if not await self.motion.command_move(distance, DURATION, FIXED_PWM, ratio):
+                for direction in (1, -1):
+                    distance = RATIO_DISTANCE_MM * direction
+
+                    # sending movement to robot
+                    if not await self.motion.command_move(distance, None, RATIO_PWM, ratio):
                         return
+                    # takes a picture and get rot pos
                     if await self.calibrate_rot_pos(
-                        target_angle=0.0, pwm=FIXED_PWM,
-                        target_distance=distance, duration=DURATION, ratio=ratio,
+                        target_angle=0.0, pwm=RATIO_PWM,
+                        target_distance=distance, ratio=ratio,
                     ) is None:
                         return
 
-        # single move with fixed ratio + duration, measure marker position to calculate the speed approximately
-        async def run_speed_calibration(self):
-            logger.info(f"mode: speed — ratio={LOCKED_RATIO}, duration={SPEED_DURATION}, pwm={SPEED_PWM}")
-            for direction in DIRECTIONS:
-                duration = SPEED_DURATION * direction
-                if not await self.motion.command_move(None, duration, SPEED_PWM, LOCKED_RATIO):
-                    return
-                if await self.calibrate_rot_pos(
-                    duration=duration, pwm=SPEED_PWM, ratio=LOCKED_RATIO,
-                ) is None:
-                    return
+            # does linear regression on the ratio data
+            fwd_ratio, bwd_ratio = analyse_ratio(self.run_dir)
 
-        # tries a range of duration to build a duration/distance curve with a fixed ratio
-        async def run_curve_calibration(self):
-            logger.info(f"mode: curve — ratio={CURVE_RATIO}, durations={CURVE_DURATIONS}, pwm={CURVE_PWM}")
-            for _ in range(MULTIPLY):
-                for duration in CURVE_DURATIONS:
-                    for direction in DIRECTIONS:
-                        signed_duration = duration * direction
-                        if not await self.motion.command_move(None, signed_duration, CURVE_PWM, CURVE_RATIO):
-                            return
-                        if await self.calibrate_rot_pos(
-                            duration=signed_duration, pwm=CURVE_PWM, ratio=CURVE_RATIO,
-                        ) is None:
-                            return
+            # sends to the controller agent the calculated ratios
+            if fwd_ratio is not None:
+                await self.motion.command_calibrate("ratio_forward", fwd_ratio)
+            if bwd_ratio is not None:
+                await self.motion.command_calibrate("ratio_backward", bwd_ratio)
 
-        # tries a range of distances forward then backward with a fixed ratio
-        async def run_distance_calibration(self):
-            logger.info(f"mode: distance — distances={DISTANCES}, pwm={DISTANCES_PWM}, ratio={DISTANCES_RATIO}")
-            for _ in range(MULTIPLY):
-                for distance in DISTANCES:
-                    for direction in DIRECTIONS:
-                        signed_distance = distance * direction
-                        if not await self.motion.command_move(signed_distance, None, DISTANCES_PWM, DISTANCES_RATIO):
-                            return
-                        if await self.calibrate_rot_pos(
-                            target_distance=signed_distance, pwm=DISTANCES_PWM, duration=None, ratio=DISTANCES_RATIO,
-                        ) is None:
-                            return
-
-        # tries a range of durations at fixed pwm/ratio to build a duration/angle curve for the rotation
+        # tests different rotations to obtain a dataset duration / angle
         async def run_rotation_calibration(self):
-            logger.info(f"mode: rotation — durations={ROTATION_DURATIONS}, pwm={ROTATION_PWM}, ratio={ROTATION_RATIO}")
+            logger.info(
+                f"mode: rotation — durations={ROTATION_DURATIONS}, "
+                f"pwm={ROTATION_PWM}, ratio={ROTATION_RATIO}"
+            )
+
+            # loops through durations in the list
             for duration in ROTATION_DURATIONS:
-                for direction in DIRECTIONS:
+                for direction in (1, -1):
                     signed_duration = duration * direction
-                    if not await self.motion.command_rotation(None, signed_duration, ROTATION_PWM, ROTATION_RATIO):
+
+                    # sending movement to robot
+                    if not await self.motion.command_rotation(
+                        None, signed_duration, ROTATION_PWM, ROTATION_RATIO
+                    ):
                         return
+
+                    # takes a picture and get rot pos
                     if await self.calibrate_rot_pos(
                         duration=signed_duration, pwm=ROTATION_PWM, ratio=ROTATION_RATIO,
                     ) is None:
                         return
 
-        # replays a fixed list of target angles to check that the calibrated rotation model holds
+            # does linear regression on the rotation data
+            pos_slope, pos_intercept, neg_slope, neg_intercept = analyse_rotation(
+                self.run_dir
+            )
+
+            # sends to the controller agent the calculated ratios
+            await self.motion.command_calibrate("positive", pos_slope, pos_intercept)
+            await self.motion.command_calibrate("negative", neg_slope, neg_intercept)
+
+        # tests different durations to obtain a dataset duration / distance
+        async def run_distance_calibration(self):
+            logger.info(
+                f"mode: distance — durations={DISTANCE_DURATIONS}, "
+                f"pwm={DISTANCE_PWM}, ratio={DISTANCE_RATIO}"
+            )
+
+            # loops through durations in the list
+            for duration in DISTANCE_DURATIONS:
+                for direction in (1, -1):
+                    signed_duration = duration * direction
+
+                    # sending movement to robot
+                    if not await self.motion.command_move(
+                        None, signed_duration, DISTANCE_PWM, DISTANCE_RATIO
+                    ):
+                        return
+
+                    # takes a picture and get rot pos
+                    if await self.calibrate_rot_pos(
+                        duration=signed_duration, pwm=DISTANCE_PWM, ratio=DISTANCE_RATIO,
+                    ) is None:
+                        return
+
+            # does linear regression on the distance data
+            fwd_slope, fwd_intercept, bwd_slope, bwd_intercept = analyse_distance(
+                self.run_dir
+            )
+
+            # sends to the controller agent the calculated ratios
+            await self.motion.command_calibrate("forward", fwd_slope, fwd_intercept)
+            await self.motion.command_calibrate("backward", bwd_slope, bwd_intercept)
+
+        # repeats forward/backward moves to verify the calibrated ratio
+        async def run_ratio_verification(self):
+            logger.info(
+                f"mode: verify_ratio — {VERIFY_RATIO_TRIALS} cycles of "
+                f"forward+backward {RATIO_DISTANCE_MM}mm"
+            )
+
+            # loops through the verification trials
+            for trial in range(VERIFY_RATIO_TRIALS):
+                for direction in (1, -1):
+                    distance = RATIO_DISTANCE_MM * direction
+
+                    # sending movement to robot
+                    # ratio=None → bot uses its calibrated ratio_forward / ratio_backward
+                    if not await self.motion.command_move(distance, None, RATIO_PWM, None):
+                        return
+
+                    # takes a picture and get rot pos
+                    if await self.calibrate_rot_pos(
+                        target_angle=0.0, pwm=RATIO_PWM,
+                        target_distance=distance, ratio=0.0,
+                    ) is None:
+                        return
+
+            # computes L2 score on the verification data
+            score = analyse_ratio_verify(self.run_dir)
+
+            # saves the score in a txt file
+            self._save_score(score)
+
+        # repeats +/-90 rotations to verify the calibrated rotation model
         async def run_rotation_verification(self):
-            logger.info(f"mode: rotation verification — angles={VERIFICATION_ANGLES}, pwm={ROTATION_PWM}, ratio={ROTATION_RATIO}")
-            for angle in VERIFICATION_ANGLES:
-                for direction in DIRECTIONS:
-                    signed_angle = angle * direction
-                    if not await self.motion.command_rotation(signed_angle, 0, ROTATION_PWM, ROTATION_RATIO):
+            logger.info(
+                f"mode: verify_rotation — {VERIFY_ROTATION_CYCLES} cycles of "
+                f"+{VERIFY_ROTATION_ANGLE} then -{VERIFY_ROTATION_ANGLE}"
+            )
+
+            # loops through the verification cycles
+            for cycle in range(VERIFY_ROTATION_CYCLES):
+                for direction in (1, -1):
+                    signed_angle = VERIFY_ROTATION_ANGLE * direction
+
+                    # sending movement to robot
+                    # duration=0 → bot derives duration from its calibrated rotation model
+                    if not await self.motion.command_rotation(
+                        signed_angle, 0, ROTATION_PWM, ROTATION_RATIO
+                    ):
                         return
-                    pose = await self.calibrate_rot_pos(
+
+                    # takes a picture and get rot pos
+                    if await self.calibrate_rot_pos(
                         target_angle=signed_angle, pwm=ROTATION_PWM, ratio=ROTATION_RATIO,
-                    )
-                    if pose is None:
+                    ) is None:
                         return
-                    logger.info(f"predicted: {signed_angle:+.1f} measured: {pose['angle_deg']:+.2f}")
 
-        async def run(self):
+            # computes L2 score on the verification data
+            score = analyse_rotation_verify(self.run_dir)
 
+            # saves the score in a txt file
+            self._save_score(score)
+
+        # repeats forward/backward moves to verify the calibrated distance model
+        async def run_distance_verification(self):
+            logger.info(
+                f"mode: verify_distance — {VERIFY_DISTANCE_TRIALS} cycles of "
+                f"forward+backward {VERIFY_DISTANCE_MM}mm"
+            )
+
+            # loops through the verification trials
+            for trial in range(VERIFY_DISTANCE_TRIALS):
+                for direction in (1, -1):
+                    distance = VERIFY_DISTANCE_MM * direction
+
+                    # sending movement to robot
+                    # duration=None and ratio=None → bot uses its calibrated values
+                    if not await self.motion.command_move(distance, None, DISTANCE_PWM, None):
+                        return
+
+                    # takes a picture and get rot pos
+                    if await self.calibrate_rot_pos(
+                        target_distance=distance, pwm=DISTANCE_PWM,
+                    ) is None:
+                        return
+
+            # computes L2 score on the verification data
+            score = analyse_distance_verify(self.run_dir)
+
+            # saves the score in a txt file
+            self._save_score(score)
+
+        # helper function to save the score into a txt file
+        def _save_score(self, score):
+            score_path = os.path.join(self.run_dir, "score.txt")
+            with open(score_path, "w") as f:
+                f.write(f"{score:.4f}\n")
+            logger.info(f"saved score to {score_path}")
+
+        # one-time setup before the cyclic loop starts
+        async def on_start(self):
             self.camera = CameraClient(self)
             self.motion = MotionClient(self)
+            self.is_running = False
+            logger.info("calibrator ready, waiting for 'calibrate <ratio|rotation|distance>' commands")
 
-            # Setting up the directories
-            self.run_dir, run_id = new_run_dir(CALIBRATION_DIR, "calibration")
-            self.run_csv = os.path.join(self.run_dir, f"{CALIBRATION_MODE}.csv")
-            logger.info(f"calibration run {run_id} ({CALIBRATION_MODE}) writing to {self.run_dir}")
+        # called repeatedly: wait for an xmpp command, dispatch, repeat
+        async def run(self):
 
-            # Increment if for naming
-            self.step_id = 0
-
-            # initial reference
-            if await self.calibrate_rot_pos(target_angle=0.0, pwm=0) is None:
+            # waits for a message (10s timeout, just to keep the loop polling)
+            request = await self.receive(timeout=10)
+            if request is None:
                 return
 
-            submodes = {
-                "rotation": self.run_rotation_calibration,
-                "rotation_verification": self.run_rotation_verification,
+            # parse "calibrate <mode>"
+            body = (request.body or "").strip()
+            parts = body.split()
+            if len(parts) != 2 or parts[0] != "calibrate" or parts[1] not in VALID_CALIBRATION_MODES:
+                logger.warning(f"unknown command from {request.sender}: '{body}'")
+                return
+            mode = parts[1]
+            logger.info(f"received '{body}' from {request.sender}")
+
+            # mutual exclusion: reject if a calibration is already in progress
+            if self.is_running:
+                logger.warning(f"calibration busy, ignoring '{body}'")
+                return
+
+            # run the cal -> verify pair, always release the flag at the end
+            self.is_running = True
+            try:
+                await self._run_calibrate_then_verify(mode)
+            except Exception:
+                logger.exception(f"calibration {mode} failed")
+            finally:
+                self.is_running = False
+
+        # wrapper: runs the calibration sweep, then the verification, in a shared run folder
+        async def _run_calibrate_then_verify(self, mode: str):
+
+            # picks the right pair of methods for this mode
+            calibration_runners = {
                 "ratio": self.run_ratio_calibration,
-                "speed": self.run_speed_calibration,
-                "curve": self.run_curve_calibration,
+                "rotation": self.run_rotation_calibration,
                 "distance": self.run_distance_calibration,
             }
-            runner = submodes.get(CALIBRATION_MODE)
-            if runner is None:
-                logger.error(f"unknown CALIBRATION_MODE '{CALIBRATION_MODE}', valid: {list(submodes)}")
-                return
-            await runner()
+            verify_runners = {
+                "ratio": self.run_ratio_verification,
+                "rotation": self.run_rotation_verification,
+                "distance": self.run_distance_verification,
+            }
+            run_calibration = calibration_runners[mode]
+            run_verification = verify_runners[mode]
 
-        async def setup(self):
-            pass
+            # one shared folder for both csvs, both plots, score.txt, and step images
+            self.run_dir, run_id = new_run_dir(CALIBRATION_DIR, f"calibration_{mode}")
+            logger.info(f"calibration run {run_id} ({mode}) writing to {self.run_dir}")
+
+            # reset per-run counters (image filenames stay unique across phases)
+            self.step_id = 0
+            self.consecutive_failures = 0
+
+            # phase 1: calibration sweep + push the new params to the bot
+            self.run_csv = os.path.join(self.run_dir, f"{mode}.csv")
+            logger.info(f"phase 1/2: {mode} calibration")
+            if await self.calibrate_rot_pos(target_angle=0.0, pwm=0) is None:
+                return
+            await run_calibration()
+
+            # if phase 1 hit the abort threshold, the camera/marker is broken
+            # so phase 2 would just waste another ~5s on a guaranteed failure
+            if self.consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                logger.error(f"phase 1 aborted, skipping phase 2 (camera/marker broken)")
+                return
+
+            # phase 2: verification with the new calibrated values
+            self.run_csv = os.path.join(self.run_dir, f"verify_{mode}.csv")
+            logger.info(f"phase 2/2: {mode} verification")
+            if await self.calibrate_rot_pos(target_angle=0.0, pwm=0) is None:
+                return
+            await run_verification()
+
+            logger.info(f"done: {mode} calibration + verification, run {run_id}")
 
     async def setup(self):
-        logger.info("calibrator agent ready")
+        logger.info("calibrator agent starting")
         self.add_behaviour(self.CalibrateBehaviour())

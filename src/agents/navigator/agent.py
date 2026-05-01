@@ -12,7 +12,7 @@ from agents.navigator.result import NavigationOutcome
 from agents.navigator.vision_pipeline import MazeVisionPipeline
 
 from common.camera_client import CameraClient
-from common.config import LOGGER_JID, ROBOT_JID
+from common.config import TELEMETRY_JID, ROBOT_JID
 from common.path_motion_executor import PathMotionExecutor
 from common.run_dir import new_run_dir
 
@@ -31,11 +31,11 @@ class NavigatorAgent(agent.Agent):
         # Pushes the path of the latest per-step path image to the logger agent
         # via XMPP. The logger reads the file from the shared filesystem.
         async def notify_logger(self, image_path: str) -> None:
-            msg = Message(to=LOGGER_JID)
+            msg = Message(to=TELEMETRY_JID)
             msg.set_metadata("performative", "inform")
             msg.body = f"image {image_path}"
             await self.send(msg)
-            logger.info(f"[NAV] notified {LOGGER_JID}: image {image_path}")
+            logger.info(f"[NAV] notified {TELEMETRY_JID}: image {image_path}")
 
         async def run(self):
             cfg: NavigatorConfig = self.agent.cfg
@@ -83,6 +83,9 @@ class NavigatorAgent(agent.Agent):
                 run_dir=run_dir,
                 grid_detector=vision.grid,
                 localizer=localizer.localizer,
+                obstacle_margin_px=cfg.obstacle_avoidance_margin_px,
+                robot_margin_px=cfg.robot_clearance_margin_px,
+                contour_padding_px=cfg.contour_demo_padding_px,
             )
 
             orch = NavigationOrchestrator(
@@ -115,6 +118,8 @@ class NavigatorAgent(agent.Agent):
 
     async def setup(self):
         self.cfg = NavigatorConfig.from_env()
+        if not self.cfg.target_cell:
+            logger.error("[INIT] Navigator target cell is empty")
         logger.info(
             f"[INIT] Navigator ready: target={self.cfg.target_cell}, "
             f"max_steps={self.cfg.max_steps}, "
