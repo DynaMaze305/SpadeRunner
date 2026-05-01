@@ -48,8 +48,13 @@ coverage.xml
 *.swp
 *.swo 
 
+# Prosody ignore
+prosody/prosody-data/*
+*.crt
+*.key
+*.dat
+
+# Saved images
 received_photos/*
 calibration_photos/*
 navigation_photos/*
-
-prosody
