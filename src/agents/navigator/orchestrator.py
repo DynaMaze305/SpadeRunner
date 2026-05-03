@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 import os
 from typing import Awaitable, Callable, Optional
+
+# ArUco retry settings — fresh photo + fresh detection up to N attempts
+MAX_DETECT_ATTEMPTS = 3
+RETRY_DELAY_S = 0.2
 
 from agents.navigator.config import NavigatorConfig
 from agents.navigator.debug import NavigatorDebug
@@ -146,15 +151,37 @@ class NavigationOrchestrator:
 
             robot = self.localizer.locate(frame)
 
+            # If aruco was not detected, retry with fresh photos (up to MAX_DETECT_ATTEMPTS total)
+            for attempt in range(1, MAX_DETECT_ATTEMPTS):
+                if robot is not None:
+                    break
+                logger.warning(f"[ROBOT] aruco missing, retry {attempt}/{MAX_DETECT_ATTEMPTS - 1}")
+                await asyncio.sleep(RETRY_DELAY_S)
+
+                # Fresh photo and fresh vision pass
+                retry_bytes = await self.photo_source("navigator-retry")
+                if retry_bytes is None:
+                    continue
+                if cached_frame is not None:
+                    retry_frame_or_err = self.vision.analyze_with_cached_maze(
+                        retry_bytes, cached_frame,
+                    )
+                else:
+                    retry_frame_or_err = self.vision.analyze(retry_bytes)
+                if isinstance(retry_frame_or_err, VisionError):
+                    continue
+                # Fresh detection on the new frame
+                frame = retry_frame_or_err
+                robot = self.localizer.locate(frame)
+
+            # All retries exhausted, skip this step instead of killing the run
             if robot is None:
-                logger.error("[ERROR] Robot detection failed: no ArUco pose")
-                self._save_debug(step, image=frame.image, frame=frame, robot_pose=None, path=None)
-                return NavigationResult(
-                    NavigationOutcome.FAILED_NO_ROBOT,
-                    last_cell=last_cell,
-                    steps_taken=step,
-                    message="no robot detected",
+                logger.warning(
+                    f"[ROBOT] aruco not detected after {MAX_DETECT_ATTEMPTS} attempts, "
+                    f"skipping step {step}"
                 )
+                self._save_debug(step, image=frame.image, frame=frame, robot_pose=None, path=None)
+                continue
 
             current_cell = robot.cell
             current_angle = robot.angle_deg
@@ -167,7 +194,29 @@ class NavigationOrchestrator:
                 f"center={robot.center}"
             )
 
-            if current_cell == cfg.target_cell:
+            # Proximity check: count as reached if robot is within the configured
+            # radius from the target cell center, even if still labelled in a neighbour cell.
+            target_center = self._cell_center_local(
+                cfg.target_cell, frame.x_lines, frame.y_lines,
+            )
+            robot_local_pos_check = self._robot_local_position(frame, robot)
+            distance_to_target_mm = None
+            if target_center is not None:
+                distance_to_target_mm = math.hypot(
+                    target_center[0] - robot_local_pos_check[0],
+                    target_center[1] - robot_local_pos_check[1],
+                ) * cfg.mm_per_pixel
+                logger.info(
+                    f"[TARGET] {cfg.target_cell} distance={distance_to_target_mm:.0f} mm "
+                    f"(radius={cfg.cell_reached_radius_mm:.0f} mm)"
+                )
+
+            within_radius = (
+                distance_to_target_mm is not None
+                and distance_to_target_mm <= cfg.cell_reached_radius_mm
+            )
+
+            if current_cell == cfg.target_cell or within_radius:
                 logger.info("[SUCCESS] Reached destination")
                 self._save_debug(step, image=frame.image, frame=frame, robot_pose=robot, path=None)
                 return NavigationResult(
@@ -295,18 +344,60 @@ class NavigationOrchestrator:
                 self._inject_point_move_distances(commands)
                 used_contour_segment = True
 
+            used_point_path = False
+
             if commands is None:
-                commands = self.converter.path_to_commands(
-                    path=next_step_cells,
-                    start_angle=current_angle,
+                # Pick the next checkpoint: stay on the current cell's center
+                # until we are within cell_reached_radius_mm, only then advance.
+                current_center = self._cell_center_local(
+                    current_cell, frame.x_lines, frame.y_lines,
                 )
+                distance_to_current_center_mm = None
+                if current_center is not None:
+                    distance_to_current_center_mm = math.hypot(
+                        current_center[0] - robot_local_pos[0],
+                        current_center[1] - robot_local_pos[1],
+                    ) * cfg.mm_per_pixel
+
+                # Stay on the current cell center if we haven't reached it yet
+                if (
+                    current_center is not None
+                    and distance_to_current_center_mm > cfg.cell_reached_radius_mm
+                ):
+                    waypoint = current_center
+                    logger.info(
+                        f"[CHECKPOINT] heading to {current_cell} center, "
+                        f"distance={distance_to_current_center_mm:.0f} mm "
+                        f"(radius={cfg.cell_reached_radius_mm:.0f} mm)"
+                    )
+                else:
+                    # Otherwise advance to the next cell on the path
+                    waypoint = self._cell_center_local(
+                        path[1], frame.x_lines, frame.y_lines,
+                    )
+                    logger.info(f"[CHECKPOINT] advancing to {path[1]} center")
+
+                # Aim straight at the chosen waypoint pixel center
+                if waypoint is not None:
+                    commands = self.converter.points_to_commands(
+                        path=[robot_local_pos, waypoint],
+                        start_angle=current_angle,
+                    )
+                    self._inject_point_move_distances(commands)
+                    used_point_path = True
+                else:
+                    # Fallback to the cardinal cell-based path if we cannot find a center
+                    commands = self.converter.path_to_commands(
+                        path=next_step_cells,
+                        start_angle=current_angle,
+                    )
 
             logger.info(f"[COMMANDS] {commands}")
 
             # Annotate move commands with the actual mm distance derived from the
             # current camera frame, so the executor sends a per-step distance
             # instead of always using cfg.move_distance.
-            if blocked_next_cell is None and not used_contour_segment:
+            if blocked_next_cell is None and not used_contour_segment and not used_point_path:
                 self._inject_move_distances(commands, frame, robot)
 
             # Save the composite BEFORE motion executes so the card reflects
@@ -489,7 +580,8 @@ class NavigationOrchestrator:
                 target_pos[0] - current_pos[0],
                 target_pos[1] - current_pos[1],
             )
-            cmd["distance_mm"] = distance_px * mm_per_pixel
+            # Scale by the fraction so the loop can re-localize between partial moves
+            cmd["distance_mm"] = distance_px * mm_per_pixel * self.config.move_distance_fraction
             current_pos = target_pos
 
     def _inject_point_move_distances(self, commands: list[dict]) -> None:
@@ -499,7 +591,8 @@ class NavigationOrchestrator:
             distance_px = cmd.get("distance_px")
             if distance_px is None:
                 continue
-            cmd["distance_mm"] = float(distance_px) * self.config.mm_per_pixel
+            # Scale by the fraction so the loop can re-localize between partial moves
+            cmd["distance_mm"] = float(distance_px) * self.config.mm_per_pixel * self.config.move_distance_fraction
 
     @staticmethod
     def _dedupe_points(

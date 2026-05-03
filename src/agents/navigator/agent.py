@@ -66,6 +66,7 @@ class NavigatorAgent(agent.Agent):
             vision = MazeVisionPipeline(
                 threshold_ratio=cfg.grid_threshold_ratio,
                 min_gap=cfg.grid_min_gap,
+                obstacles_enabled=cfg.obstacles_enabled,
             )
             localizer = RobotLocalizationStep(angle_offset_deg=cfg.angle_offset_deg)
             planner = PathPlanner()
