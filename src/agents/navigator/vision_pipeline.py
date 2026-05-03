@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from dataclasses import dataclass
 from enum import Enum
 
@@ -160,6 +162,57 @@ class MazeVisionPipeline:
             n_rows=cached.n_rows,
             n_cols=cached.n_cols,
             grid_walls=cached.grid_walls,
+            obstacle_mask=obstacle_mask,
+            obstacles=obstacles,
+        )
+
+    # Builds a cached_frame from a saved maze JSON instead of detecting one.
+    # The live image is still cropped via the saved crop_bbox so robot localization
+    # works as usual; wall_clean is a placeholder (never read once cached).
+    def load_cached_frame_from_json(
+        self,
+        image_bytes: bytes,
+        json_path: str,
+    ) -> VisionFrame:
+        # Read the saved structure
+        with open(json_path, "r") as f:
+            saved = json.load(f)
+
+        # Decode the live image and crop using the saved bbox
+        image = Camera.decode_image(image_bytes)
+        x1, y1, x2, y2 = saved["crop_bbox"]
+        cropped = image[y1:y2, x1:x2]
+
+        # cropped_mask is unused downstream once the frame is cached, fill with zeros
+        cropped_mask = np.zeros(cropped.shape[:2], dtype=np.uint8)
+        maze = {
+            "crop_bbox": (x1, y1, x2, y2),
+            "cropped": cropped,
+            "cropped_mask": cropped_mask,
+        }
+
+        # wall_clean is a placeholder (same shape as the cropped region, all zeros)
+        wall_clean = np.zeros(cropped.shape[:2], dtype=np.uint8)
+
+        # Optionally run obstacle detection on the cropped region (synthetic mazes
+        # may still want live obstacle detection on the floor)
+        if self.obstacles_enabled:
+            obstacle_mask = detect_black_mask(cropped)
+            obstacles = extract_obstacles_from_mask(obstacle_mask)
+        else:
+            obstacle_mask = np.zeros(cropped.shape[:2], dtype=np.uint8)
+            obstacles = []
+
+        return VisionFrame(
+            image=image,
+            image_bytes=image_bytes,
+            maze=maze,
+            wall_clean=wall_clean,
+            x_lines=list(saved["x_lines"]),
+            y_lines=list(saved["y_lines"]),
+            n_rows=int(saved["n_rows"]),
+            n_cols=int(saved["n_cols"]),
+            grid_walls=saved["grid_walls"],
             obstacle_mask=obstacle_mask,
             obstacles=obstacles,
         )

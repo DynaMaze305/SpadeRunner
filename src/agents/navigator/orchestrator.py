@@ -74,6 +74,27 @@ class NavigationOrchestrator:
             else None
         )
 
+        # If a saved maze JSON was provided, fetch one photo, build a synthetic
+        # cached_frame from the JSON, and skip wall detection for the whole run.
+        if cfg.maze_file:
+            logger.info(f"[MAZE] loading saved layout from {cfg.maze_file}")
+            seed_bytes = await self.photo_source("maze-load-seed")
+            if seed_bytes is None:
+                logger.error("[ERROR] cannot load saved maze: no seed photo received")
+                return NavigationResult(
+                    NavigationOutcome.FAILED_NO_IMAGE,
+                    last_cell=None,
+                    steps_taken=0,
+                    message="no seed photo for saved maze",
+                )
+            cached_frame = self.vision.load_cached_frame_from_json(
+                seed_bytes, cfg.maze_file,
+            )
+            logger.info(
+                f"[MAZE] loaded {cached_frame.n_rows}x{cached_frame.n_cols}, "
+                f"crop={cached_frame.maze['crop_bbox']}"
+            )
+
         for step in range(cfg.max_steps):
             logger.info(f"\n========== STEP {step} ==========")
 
