@@ -88,7 +88,7 @@ async def main():
     vision = MazeVisionPipeline(
         threshold_ratio=cfg.grid_threshold_ratio,
         min_gap=cfg.grid_min_gap,
-        obstacles_enabled=False,
+        obstacles_enabled=True,
     )
     frame_or_err = vision.analyze(image_bytes)
     if isinstance(frame_or_err, VisionError):
@@ -102,6 +102,7 @@ async def main():
         )
 
     # Dump the structure (everything the navigator needs to skip detection)
+    # obstacles are saved as a frozen snapshot, so the replay sees the same scene
     saved = {
         "saved_at": datetime.datetime.now().isoformat(timespec="seconds"),
         "crop_bbox": list(frame.maze["crop_bbox"]),
@@ -110,7 +111,9 @@ async def main():
         "n_rows": frame.n_rows,
         "n_cols": frame.n_cols,
         "grid_walls": frame.grid_walls,
+        "obstacles": [list(box) for box in frame.obstacles],
     }
+    logger.info(f"detected {len(frame.obstacles)} obstacle boxes")
     with open(output_path, "w") as f:
         json.dump(saved, f, indent=2)
     logger.info(f"saved maze to {output_path}")

@@ -37,6 +37,9 @@ class VisionFrame:
     grid_walls: dict[str, dict[str, bool]]
     obstacle_mask: np.ndarray
     obstacles: list[tuple[int, int, int, int]]
+    # When True, the cached frame's obstacles should be reused on every replay
+    # step instead of re-running live detection (used by saved-maze JSON load).
+    obstacles_frozen: bool = False
 
 
 # Runs the full pink-mask -> walls -> grid -> walls-dict pipeline once per frame.
@@ -144,8 +147,11 @@ class MazeVisionPipeline:
         # New maze dict: refreshed `cropped` slice, every other field reused.
         maze = dict(cached.maze)
         maze["cropped"] = cropped
-        # Skip obstacle detection when disabled, return empty mask + list
-        if self.obstacles_enabled:
+        # Frozen obstacles (saved-maze replay) reuse the cached snapshot on every step
+        if cached.obstacles_frozen:
+            obstacle_mask = cached.obstacle_mask
+            obstacles = cached.obstacles
+        elif self.obstacles_enabled:
             obstacle_mask = detect_black_mask(cropped)
             obstacles = extract_obstacles_from_mask(obstacle_mask)
         else:
@@ -164,6 +170,7 @@ class MazeVisionPipeline:
             grid_walls=cached.grid_walls,
             obstacle_mask=obstacle_mask,
             obstacles=obstacles,
+            obstacles_frozen=cached.obstacles_frozen,
         )
 
     # Builds a cached_frame from a saved maze JSON instead of detecting one.
@@ -194,14 +201,21 @@ class MazeVisionPipeline:
         # wall_clean is a placeholder (same shape as the cropped region, all zeros)
         wall_clean = np.zeros(cropped.shape[:2], dtype=np.uint8)
 
-        # Optionally run obstacle detection on the cropped region (synthetic mazes
-        # may still want live obstacle detection on the floor)
-        if self.obstacles_enabled:
+        # If obstacles were saved with the maze, replay uses that frozen snapshot.
+        # Otherwise fall back to live detection on the cropped region (or empty).
+        saved_obstacles = saved.get("obstacles")
+        if saved_obstacles is not None:
+            obstacle_mask = np.zeros(cropped.shape[:2], dtype=np.uint8)
+            obstacles = [tuple(box) for box in saved_obstacles]
+            obstacles_frozen = True
+        elif self.obstacles_enabled:
             obstacle_mask = detect_black_mask(cropped)
             obstacles = extract_obstacles_from_mask(obstacle_mask)
+            obstacles_frozen = False
         else:
             obstacle_mask = np.zeros(cropped.shape[:2], dtype=np.uint8)
             obstacles = []
+            obstacles_frozen = False
 
         return VisionFrame(
             image=image,
@@ -215,4 +229,5 @@ class MazeVisionPipeline:
             grid_walls=saved["grid_walls"],
             obstacle_mask=obstacle_mask,
             obstacles=obstacles,
+            obstacles_frozen=obstacles_frozen,
         )
