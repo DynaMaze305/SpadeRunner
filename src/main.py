@@ -26,6 +26,7 @@ if not debug_mode:
     logging.getLogger("spade").setLevel(logging.WARNING)
     logging.getLogger("slixmpp").setLevel(logging.WARNING)
 
+from agents.bounce_test.agent import BounceTestAgent
 from agents.calibrator.agent import CalibratorAgent
 from agents.navigator.agent import NavigatorAgent
 from agents.camera_receiver.agent import CameraReceiverAgent
@@ -40,6 +41,7 @@ AGENTS = {
     "camera_test": CameraReceiverAgent,
     "navigator_request": NavigationRequesterAgent,
     "telemetry": TelemetryAgent,  # disabled: grafana/logger flow off
+    "bounce_test": BounceTestAgent,
 }
 
 
