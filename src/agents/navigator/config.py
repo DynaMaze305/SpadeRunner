@@ -40,6 +40,13 @@ class NavigatorConfig:
     # Cell width is 200 mm, average detected cell width is ~67.5 px -> ~2.96 mm/px.
     mm_per_pixel: float = 2.96
 
+    # Fraction of the computed distance actually sent to the robot per step.
+    # 1.0 = full move, 0.5 = half move (vision re-localizes between halves), etc.
+    move_distance_fraction: float = 1.0
+
+    # Radius around the target cell center that still counts as "reached" (mm).
+    cell_reached_radius_mm: float = 15.0
+
     @classmethod
     def from_env(cls) -> "NavigatorConfig":
         return cls(
@@ -69,5 +76,17 @@ class NavigatorConfig:
             ),
             mm_per_pixel=float(
                 os.getenv("NAVIGATOR_MM_PER_PIXEL", "2.96")
+            ),
+            move_distance_fraction=float(
+                os.getenv(
+                    "NAVIGATOR_MOVE_DISTANCE_FRACTION",
+                    str(cls.move_distance_fraction),
+                )
+            ),
+            cell_reached_radius_mm=float(
+                os.getenv(
+                    "NAVIGATOR_CELL_REACHED_RADIUS_MM",
+                    str(cls.cell_reached_radius_mm),
+                )
             ),
         )
