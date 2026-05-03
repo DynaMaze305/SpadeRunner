@@ -46,10 +46,12 @@ class MazeVisionPipeline:
         threshold_ratio: float = 0.03,
         min_gap: int = 15,
         wall_threshold: int = 100,
+        obstacles_enabled: bool = True,
     ) -> None:
         self.threshold_ratio = threshold_ratio
         self.min_gap = min_gap
         self.wall_threshold = wall_threshold
+        self.obstacles_enabled = obstacles_enabled
 
         self.camera = Camera()
         self.cropper = ColorDetectorImageCropper()
@@ -73,8 +75,13 @@ class MazeVisionPipeline:
         cropped_mask = maze["cropped_mask"]
         wall_bin = self.contour.create_wall_binary(cropped_mask)
         wall_clean = self.contour.clean_wall_mask(wall_bin)
-        obstacle_mask = detect_black_mask(maze["cropped"])
-        obstacles = extract_obstacles_from_mask(obstacle_mask)
+        # Skip obstacle detection when disabled, return empty mask + list
+        if self.obstacles_enabled:
+            obstacle_mask = detect_black_mask(maze["cropped"])
+            obstacles = extract_obstacles_from_mask(obstacle_mask)
+        else:
+            obstacle_mask = np.zeros(maze["cropped"].shape[:2], dtype=np.uint8)
+            obstacles = []
 
         grid_result = self.grid.detect_grid_lines(
             wall_clean,
@@ -135,8 +142,13 @@ class MazeVisionPipeline:
         # New maze dict: refreshed `cropped` slice, every other field reused.
         maze = dict(cached.maze)
         maze["cropped"] = cropped
-        obstacle_mask = detect_black_mask(cropped)
-        obstacles = extract_obstacles_from_mask(obstacle_mask)
+        # Skip obstacle detection when disabled, return empty mask + list
+        if self.obstacles_enabled:
+            obstacle_mask = detect_black_mask(cropped)
+            obstacles = extract_obstacles_from_mask(obstacle_mask)
+        else:
+            obstacle_mask = np.zeros(cropped.shape[:2], dtype=np.uint8)
+            obstacles = []
 
         return VisionFrame(
             image=image,

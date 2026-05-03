@@ -45,6 +45,16 @@ class NavigatorConfig:
     contour_demo_padding_px: int = 25
     contour_waypoint_reached_px: int = 8
 
+    # Fraction of the computed distance actually sent to the robot per step.
+    # 1.0 = full move, 0.5 = half move (vision re-localizes between halves), etc.
+    move_distance_fraction: float = 1.0
+
+    # Radius around the target cell center that still counts as "reached" (mm).
+    cell_reached_radius_mm: float = 15.0
+
+    # Set to False to skip obstacle detection entirely (debug / no obstacles in scene).
+    obstacles_enabled: bool = True
+
     @classmethod
     def from_env(cls) -> "NavigatorConfig":
         return cls(
@@ -116,4 +126,20 @@ class NavigatorConfig:
                     str(cls.contour_waypoint_reached_px),
                 )
             ),
+            move_distance_fraction=float(
+                os.getenv(
+                    "NAVIGATOR_MOVE_DISTANCE_FRACTION",
+                    str(cls.move_distance_fraction),
+                )
+            ),
+            cell_reached_radius_mm=float(
+                os.getenv(
+                    "NAVIGATOR_CELL_REACHED_RADIUS_MM",
+                    str(cls.cell_reached_radius_mm),
+                )
+            ),
+            obstacles_enabled=os.getenv(
+                "NAVIGATOR_OBSTACLES_ENABLED",
+                "1" if cls.obstacles_enabled else "0",
+            ) == "1",
         )
