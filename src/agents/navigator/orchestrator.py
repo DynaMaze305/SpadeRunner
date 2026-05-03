@@ -11,6 +11,11 @@ from typing import Awaitable, Callable, Optional
 MAX_DETECT_ATTEMPTS = 3
 RETRY_DELAY_S = 0.2
 
+# Emergency recovery: back up this much when the bot trips the latch
+EMERGENCY_RECOVERY_MM = -30
+EMERGENCY_RECOVERY_PWM = 10
+MAX_CONSECUTIVE_EMERGENCIES = 2
+
 from agents.calibrator.log import log_row
 from agents.navigator.config import NavigatorConfig
 from agents.navigator.debug import NavigatorDebug
@@ -60,6 +65,7 @@ class NavigationOrchestrator:
     async def run(self) -> NavigationResult:
         cfg = self.config
         bad_grid_count = 0
+        consecutive_emergencies = 0
         last_cell: str | None = None
         # Cache of the maze structure (crop_bbox, walls, grid lines) from the
         # first successful frame; reused thereafter to skip the wall pipeline.
@@ -461,6 +467,31 @@ class NavigationOrchestrator:
                 commands, current_angle,
             )
             logger.info(f"[EXECUTION] success={success}")
+
+            # bot tripped its emergency latch -> back up and let next iteration replan
+            if self.executor.motion.last_emergency:
+                consecutive_emergencies += 1
+                logger.warning(
+                    f"[EMERGENCY] tripped, consecutive={consecutive_emergencies}, "
+                    f"recovering with {EMERGENCY_RECOVERY_MM}mm backward override"
+                )
+                if consecutive_emergencies > MAX_CONSECUTIVE_EMERGENCIES:
+                    return NavigationResult(
+                        NavigationOutcome.FAILED_EXECUTION,
+                        last_cell=current_cell,
+                        steps_taken=step,
+                        message="bot stuck after emergency recoveries",
+                    )
+                await self.executor.motion.command_move(
+                    distance=EMERGENCY_RECOVERY_MM,
+                    pwm=EMERGENCY_RECOVERY_PWM,
+                    ratio=cfg.ratio,
+                    override=True,
+                )
+                self.executor.motion.last_emergency = False
+                continue
+
+            consecutive_emergencies = 0
 
             if not success:
                 logger.error("[ERROR] Execution failed")
