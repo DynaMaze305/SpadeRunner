@@ -11,9 +11,20 @@ import os
 import asyncio
 import logging
 
+# DEBUG=1 in the env enables the chatty dashboard / aiohttp / spade logs
+debug_mode = os.getenv("DEBUG") == "1"
+root_level = logging.DEBUG if debug_mode else logging.INFO
+
 # Set up logging to track program execution
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=root_level, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Silence the noisy stuff unless debug mode is on
+if not debug_mode:
+    logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
+    logging.getLogger("TelemetryAgent").setLevel(logging.ERROR)
+    logging.getLogger("spade").setLevel(logging.WARNING)
+    logging.getLogger("slixmpp").setLevel(logging.WARNING)
 
 from agents.calibrator.agent import CalibratorAgent
 from agents.navigator.agent import NavigatorAgent
