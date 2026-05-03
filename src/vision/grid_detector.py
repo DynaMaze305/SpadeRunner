@@ -79,6 +79,26 @@ class GridDetector:
         # Convert each group into one center coordinate
         return [int(np.mean(group)) for group in groups]
 
+    def fill_missing_lines(self, lines: list[int]) -> list[int]:
+        # Need at least two lines to know how wide a cell is
+        if len(lines) < 2:
+            return lines
+
+        # Use the median gap as the canonical cell size
+        gaps = [lines[i + 1] - lines[i] for i in range(len(lines) - 1)]
+        cell_size = float(np.median(gaps))
+
+        # Walk the gaps and insert evenly-spaced lines where walls were missing
+        filled = [lines[0]]
+        for i in range(1, len(lines)):
+            gap = lines[i] - lines[i - 1]
+            n_cells = max(1, int(round(gap / cell_size)))
+            for k in range(1, n_cells):
+                filled.append(int(lines[i - 1] + k * gap / n_cells))
+            filled.append(lines[i])
+
+        return filled
+
     def detect_grid_lines(
         self,
         wall_clean: np.ndarray,
@@ -96,6 +116,10 @@ class GridDetector:
 
         # Extract y coordinates of horizontal grid lines
         y_lines = self.extract_peaks(y_profile, threshold_ratio, min_gap)
+
+        # Fill in cell boundaries that have no wall to detect
+        x_lines = self.fill_missing_lines(x_lines)
+        y_lines = self.fill_missing_lines(y_lines)
 
         # Return intermediate outputs and final detected grid coordinates
         return {
