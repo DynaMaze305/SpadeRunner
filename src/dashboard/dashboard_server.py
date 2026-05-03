@@ -2,6 +2,7 @@
 import json
 import os
 from aiohttp import web, WSMsgType
+from common.config import CALIBRATOR_JID
 from common.config import NAVIGATOR_JID
 from common.config import SENSORS_JID
 
@@ -15,7 +16,10 @@ from dashboard.render.ObstaclesComponent import ObstacleSensorsComponent
 XMPP_DOMAIN = os.environ.get("XMPP_DOMAIN", "prosody")
 BUTTONS = [
     {"text": "Start", "target_jid": f"{NAVIGATOR_JID}", "command": "request path"},
-    {"text": "Register", "target_jid": f"{SENSORS_JID}", "command": "register"}
+    {"text": "Register", "target_jid": f"{SENSORS_JID}", "command": "register"},
+    {"text": "Calibrate ratio", "target_jid": f"{CALIBRATOR_JID}", "command": "calibrate ratio"},
+    {"text": "Calibrate rotation", "target_jid": f"{CALIBRATOR_JID}", "command": "calibrate rotation"},
+    {"text": "Calibrate distance", "target_jid": f"{CALIBRATOR_JID}", "command": "calibrate distance"},
 ]
 
 class Dashboard:

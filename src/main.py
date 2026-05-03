@@ -54,6 +54,12 @@ async def main():
         if dashboard:
             active.append(dashboard)
 
+    # always keep the calibrator on standby so the dashboard can trigger it
+    if AGENTS[mode] is not CalibratorAgent:
+        calibrator = await start_agent(CalibratorAgent)
+        if calibrator:
+            active.append(calibrator)
+
     logger.info(f"agents started: {[a.jid for a in active]}")
 
     # keepalive: stops everything cleanly when any agent dies or on Ctrl+C
