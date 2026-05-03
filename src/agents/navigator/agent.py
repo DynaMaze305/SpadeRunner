@@ -1,3 +1,4 @@
+import json
 import logging
 
 from spade import agent, behaviour
@@ -57,65 +58,80 @@ class NavigatorAgent(agent.Agent):
                 f"[CONFIG] target_cell={cfg.target_cell}, max_steps={cfg.max_steps}"
             )
 
-            run_dir, run_id = new_run_dir(
-                cfg.photos_dir, "navigation", with_timestamp=False,
-            )
-            logger.info(f"[RUN] Created run dir: {run_dir} (run_id={run_id})")
+            # Tell the dashboard a long task is starting (locks the exclusive buttons)
+            await self._notify_status("busy", task="navigation")
 
-            camera = CameraClient(self)
-            vision = MazeVisionPipeline(
-                threshold_ratio=cfg.grid_threshold_ratio,
-                min_gap=cfg.grid_min_gap,
-                obstacles_enabled=cfg.obstacles_enabled,
-            )
-            localizer = RobotLocalizationStep(angle_offset_deg=cfg.angle_offset_deg)
-            planner = PathPlanner()
-            converter = PathCommandConverter()
-            executor = PathMotionExecutor(
-                behaviour=self,
-                robot_jid=ROBOT_JID,
-                move_distance=cfg.move_distance,
-                move_pwm=cfg.move_pwm,
-                rotation_pwm=cfg.rotation_pwm,
-                ratio=cfg.ratio,
-                rotation_ratio=cfg.rotation_ratio,
-            )
-            debug = NavigatorDebug(
-                run_dir=run_dir,
-                grid_detector=vision.grid,
-                localizer=localizer.localizer,
-                obstacle_margin_px=cfg.obstacle_avoidance_margin_px,
-                robot_margin_px=cfg.robot_clearance_margin_px,
-                contour_padding_px=cfg.contour_demo_padding_px,
-            )
+            try:
+                run_dir, run_id = new_run_dir(
+                    cfg.photos_dir, "navigation", with_timestamp=False,
+                )
+                logger.info(f"[RUN] Created run dir: {run_dir} (run_id={run_id})")
 
-            orch = NavigationOrchestrator(
-                config=cfg,
-                photo_source=camera.request_photo,
-                vision=vision,
-                localizer=localizer,
-                planner=planner,
-                converter=converter,
-                executor=executor,
-                debug=debug,
-                notify_logger=self.notify_logger,
-            )
+                camera = CameraClient(self)
+                vision = MazeVisionPipeline(
+                    threshold_ratio=cfg.grid_threshold_ratio,
+                    min_gap=cfg.grid_min_gap,
+                    obstacles_enabled=cfg.obstacles_enabled,
+                )
+                localizer = RobotLocalizationStep(angle_offset_deg=cfg.angle_offset_deg)
+                planner = PathPlanner()
+                converter = PathCommandConverter()
+                executor = PathMotionExecutor(
+                    behaviour=self,
+                    robot_jid=ROBOT_JID,
+                    move_distance=cfg.move_distance,
+                    move_pwm=cfg.move_pwm,
+                    rotation_pwm=cfg.rotation_pwm,
+                    ratio=cfg.ratio,
+                    rotation_ratio=cfg.rotation_ratio,
+                )
+                debug = NavigatorDebug(
+                    run_dir=run_dir,
+                    grid_detector=vision.grid,
+                    localizer=localizer.localizer,
+                    obstacle_margin_px=cfg.obstacle_avoidance_margin_px,
+                    robot_margin_px=cfg.robot_clearance_margin_px,
+                    contour_padding_px=cfg.contour_demo_padding_px,
+                )
 
-            result = await orch.run()
-            logger.info(
-                f"[RESULT] outcome={result.outcome.name} "
-                f"steps={result.steps_taken} last_cell={result.last_cell}"
-            )
+                orch = NavigationOrchestrator(
+                    config=cfg,
+                    photo_source=camera.request_photo,
+                    vision=vision,
+                    localizer=localizer,
+                    planner=planner,
+                    converter=converter,
+                    executor=executor,
+                    debug=debug,
+                    notify_logger=self.notify_logger,
+                )
 
-            reply = Message(to=ROBOT_JID)
-            reply.set_metadata("performative", "response")
-            reply.set_metadata("outcome", result.outcome.name)
-            reply.body = (
-                "navigation done"
-                if result.outcome is NavigationOutcome.REACHED
-                else "navigation failed"
-            )
-            await self.send(reply)
+                result = await orch.run()
+                logger.info(
+                    f"[RESULT] outcome={result.outcome.name} "
+                    f"steps={result.steps_taken} last_cell={result.last_cell}"
+                )
+
+                reply = Message(to=ROBOT_JID)
+                reply.set_metadata("performative", "response")
+                reply.set_metadata("outcome", result.outcome.name)
+                reply.body = (
+                    "navigation done"
+                    if result.outcome is NavigationOutcome.REACHED
+                    else "navigation failed"
+                )
+                await self.send(reply)
+            finally:
+                # Always release the dashboard buttons, success or failure
+                await self._notify_status("ready")
+
+        # Tells the dashboard (via telemetry) we just started or finished a job,
+        # so it can lock or unlock the mutually-exclusive control buttons
+        async def _notify_status(self, status: str, task: str = "") -> None:
+            msg = Message(to=TELEMETRY_JID)
+            msg.set_metadata("performative", "inform")
+            msg.body = json.dumps({"type": status, "task": task})
+            await self.send(msg)
 
     async def setup(self):
         self.cfg = NavigatorConfig.from_env()

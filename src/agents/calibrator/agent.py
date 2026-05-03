@@ -4,10 +4,12 @@ Inspired by the runner.py from Berk Buzcu
 
 import asyncio
 import datetime
+import json
 import logging
 import os
 
 from spade import agent, behaviour
+from spade.message import Message
 
 from agents.calibrator.distance_analysis import (
     analyse_distance,
@@ -21,7 +23,7 @@ from agents.calibrator.rotation_analysis import (
 )
 
 from common.camera_client import CameraClient
-from common.config import ARUCO_ID
+from common.config import ARUCO_ID, TELEMETRY_JID
 from common.motion_client import MotionClient
 from common.run_dir import new_run_dir
 
@@ -388,12 +390,22 @@ class CalibratorAgent(agent.Agent):
 
             # run the cal -> verify pair, always release the flag at the end
             self.is_running = True
+            await self._notify_status("busy", task=f"calibrate {mode}")
             try:
                 await self._run_calibrate_then_verify(mode)
             except Exception:
                 logger.exception(f"calibration {mode} failed")
             finally:
                 self.is_running = False
+                await self._notify_status("ready")
+
+        # Tells the dashboard (via telemetry) we just started or finished a job,
+        # so it can lock or unlock the mutually-exclusive control buttons
+        async def _notify_status(self, status: str, task: str = "") -> None:
+            msg = Message(to=TELEMETRY_JID)
+            msg.set_metadata("performative", "inform")
+            msg.body = json.dumps({"type": status, "task": task})
+            await self.send(msg)
 
         # wrapper: runs the calibration sweep, then the verification, in a shared run folder
         async def _run_calibrate_then_verify(self, mode: str):

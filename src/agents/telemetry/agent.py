@@ -100,6 +100,18 @@ class TelemetryAgent(agent.Agent):
                 logger.error(f"[AGENT] Error from bot: {payload.get('message')}")
                 return
 
+            # Forward busy/ready notifications from navigator/calibrator to the dashboard
+            if msg_type == "busy":
+                await self.agent.dashboard.broadcast({
+                    "type": "busy",
+                    "task": payload.get("task", ""),
+                })
+                return
+
+            if msg_type == "ready":
+                await self.agent.dashboard.broadcast({"type": "ready"})
+                return
+
             logger.warning(f"[AGENT] Unknown message type: {msg_type}")
 
     class XMPPSendMessage(behaviour.OneShotBehaviour):

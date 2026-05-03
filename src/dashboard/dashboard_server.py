@@ -15,11 +15,11 @@ from dashboard.render.ObstaclesComponent import ObstacleSensorsComponent
 
 XMPP_DOMAIN = os.environ.get("XMPP_DOMAIN", "prosody")
 BUTTONS = [
-    {"text": "Start", "target_jid": f"{NAVIGATOR_JID}", "command": "request path"},
-    {"text": "Register", "target_jid": f"{SENSORS_JID}", "command": "register"},
-    {"text": "Calibrate ratio", "target_jid": f"{CALIBRATOR_JID}", "command": "calibrate ratio"},
-    {"text": "Calibrate rotation", "target_jid": f"{CALIBRATOR_JID}", "command": "calibrate rotation"},
-    {"text": "Calibrate distance", "target_jid": f"{CALIBRATOR_JID}", "command": "calibrate distance"},
+    {"text": "Start", "target_jid": f"{NAVIGATOR_JID}", "command": "request path", "exclusive": True},
+    {"text": "Register", "target_jid": f"{SENSORS_JID}", "command": "register", "exclusive": False},
+    {"text": "Calibrate ratio", "target_jid": f"{CALIBRATOR_JID}", "command": "calibrate ratio", "exclusive": True},
+    {"text": "Calibrate rotation", "target_jid": f"{CALIBRATOR_JID}", "command": "calibrate rotation", "exclusive": True},
+    {"text": "Calibrate distance", "target_jid": f"{CALIBRATOR_JID}", "command": "calibrate distance", "exclusive": True},
 ]
 
 class Dashboard:
@@ -92,6 +92,15 @@ ws.onmessage = (event) => {{
 
         case "error":
             console.error("Bot error:", msg.message);
+            break;
+
+        case "busy":
+            console.log("Backend busy:", msg.task);
+            break;
+
+        case "ready":
+            console.log("Backend ready, unlocking buttons");
+            unlockExclusiveButtons();
             break;
 
         case "data":
