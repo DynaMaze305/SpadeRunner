@@ -4,12 +4,14 @@ import asyncio
 import logging
 import math
 import os
+from datetime import datetime
 from typing import Awaitable, Callable, Optional
 
 # ArUco retry settings — fresh photo + fresh detection up to N attempts
 MAX_DETECT_ATTEMPTS = 3
 RETRY_DELAY_S = 0.2
 
+from agents.calibrator.log import log_row
 from agents.navigator.config import NavigatorConfig
 from agents.navigator.debug import NavigatorDebug
 from agents.navigator.localization import RobotLocalizationStep
@@ -64,6 +66,13 @@ class NavigationOrchestrator:
         cached_frame = None
         active_contour_points: list[tuple[int, int]] | None = None
         active_contour_next_index = 1
+
+        # Per-run CSV mirroring the calibrator's schema, one row per step
+        csv_path = (
+            os.path.join(self.debug.run_dir, "navigation.csv")
+            if self.debug is not None
+            else None
+        )
 
         for step in range(cfg.max_steps):
             logger.info(f"\n========== STEP {step} ==========")
@@ -140,6 +149,8 @@ class NavigationOrchestrator:
                             steps_taken=step,
                             message="too many bad grid detections",
                         )
+                    # NaN row keeps row index in sync with step index
+                    self._log_skipped_step(csv_path, step)
                     continue
 
                 # Grid is valid — cache the maze structure for subsequent steps.
@@ -181,6 +192,8 @@ class NavigationOrchestrator:
                     f"skipping step {step}"
                 )
                 self._save_debug(step, image=frame.image, frame=frame, robot_pose=None, path=None)
+                # NaN row keeps row index in sync with step index
+                self._log_skipped_step(csv_path, step)
                 continue
 
             current_cell = robot.cell
@@ -410,6 +423,9 @@ class NavigationOrchestrator:
                 path=path,
                 contour_path=contour_points,
             )
+
+            # CSV row for this step: position + measured angle + commands issued
+            self._log_step(csv_path, step, robot, current_angle, commands)
 
             # Push the just-saved per-step path image to the logger.
             if self.notify_logger is not None and self.debug is not None:
@@ -766,4 +782,65 @@ class NavigationOrchestrator:
             robot_pose=robot_pose,
             path=path,
             contour_path=contour_path,
+        )
+
+    def _log_step(self, csv_path, step, robot, current_angle, commands) -> None:
+        # Pull the (at most) one rotate and one move from the commands list
+        if csv_path is None:
+            return
+        rot_cmd = next((c for c in commands if c.get("action") == "rotate"), None)
+        move_cmd = next((c for c in commands if c.get("action") == "move"), None)
+
+        # Rotation delta -> expected absolute heading after the rotate command
+        rotation_delta = float(rot_cmd["angle_deg"]) if rot_cmd else 0.0
+        if rot_cmd:
+            target_angle = (current_angle + rotation_delta + 180.0) % 360.0 - 180.0
+        else:
+            target_angle = current_angle
+
+        # Move distance, 0 if no move was issued this step
+        distance_mm = float(move_cmd.get("distance_mm", 0.0)) if move_cmd else 0.0
+
+        # PWM and ratio depend on whether this step moves, rotates, or neither
+        if move_cmd:
+            pwm = self.config.move_pwm
+            ratio = self.config.ratio
+        elif rot_cmd:
+            pwm = self.config.rotation_pwm
+            ratio = self.config.rotation_ratio
+        else:
+            pwm = 0
+            ratio = 0
+
+        log_row(
+            csv_path,
+            datetime.now().isoformat(timespec="seconds"),
+            os.path.join(self.debug.run_dir, f"step_{step}.jpg"),
+            target_angle,
+            pwm,
+            current_angle,
+            distance_mm,
+            None,
+            ratio,
+            robot.center[0],
+            robot.center[1],
+        )
+
+    def _log_skipped_step(self, csv_path, step) -> None:
+        # NaN row so analysis can detect "we skipped this step" without losing alignment
+        if csv_path is None:
+            return
+        nan = float("nan")
+        log_row(
+            csv_path,
+            datetime.now().isoformat(timespec="seconds"),
+            os.path.join(self.debug.run_dir, f"step_{step}.jpg") if self.debug is not None else "",
+            nan,
+            0,
+            nan,
+            0,
+            None,
+            0,
+            nan,
+            nan,
         )
