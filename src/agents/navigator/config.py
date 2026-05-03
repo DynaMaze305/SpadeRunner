@@ -55,9 +55,12 @@ class NavigatorConfig:
     # Set to False to skip obstacle detection entirely (debug / no obstacles in scene).
     obstacles_enabled: bool = True
 
-    # Path to a saved maze JSON; when set, the navigator skips wall detection and
-    # uses the saved layout instead (capture once via scripts/save_maze.py).
+    # Path to a saved maze JSON; honored only when use_saved_maze is True.
     maze_file: str | None = None
+
+    # Debug toggle: when True the navigator skips wall detection and replays
+    # maze_file. Off by default — saved-maze mode is for debugging only.
+    use_saved_maze: bool = False
 
     @classmethod
     def from_env(cls) -> "NavigatorConfig":
@@ -147,4 +150,8 @@ class NavigatorConfig:
                 "1" if cls.obstacles_enabled else "0",
             ) == "1",
             maze_file=os.getenv("MAZE_FILE", cls.maze_file) or None,
+            use_saved_maze=os.getenv(
+                "NAVIGATOR_USE_SAVED_MAZE",
+                "1" if cls.use_saved_maze else "0",
+            ) == "1",
         )

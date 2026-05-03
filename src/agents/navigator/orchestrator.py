@@ -74,9 +74,9 @@ class NavigationOrchestrator:
             else None
         )
 
-        # If a saved maze JSON was provided, fetch one photo, build a synthetic
-        # cached_frame from the JSON, and skip wall detection for the whole run.
-        if cfg.maze_file:
+        # Debug-only path: replay a saved maze instead of detecting one live.
+        # Both the toggle and the file path must be set; toggle is off by default.
+        if cfg.use_saved_maze and cfg.maze_file:
             logger.info(f"[MAZE] loading saved layout from {cfg.maze_file}")
             seed_bytes = await self.photo_source("maze-load-seed")
             if seed_bytes is None:
