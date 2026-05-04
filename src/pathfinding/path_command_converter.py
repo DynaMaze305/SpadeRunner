@@ -4,9 +4,13 @@ import math
 class PathCommandConverter:
     DIRECTIONS = {
         (0, 1): 0,
+        (1, 1): 45,
         (1, 0): 90,
+        (1, -1): 135,
         (0, -1): 180,
+        (-1, -1): -135,
         (-1, 0): -90,
+        (-1, 1): -45,
     }
 
     def path_to_commands(
