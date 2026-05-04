@@ -78,52 +78,56 @@ class MotorComponent(DashboardComponent):
 
     def render_js(self):
         return f"""
-        function update_{self.pwm_key}(values) {{
-            const pwm = values["{self.pwm_key}"] ?? 0;
-            const dir = values["{self.dir_key}"] ?? "stopped";
-            const emergency = values["{self.emergency_key}"] ?? false;
+            // ### Motor Component (render js) ###
+            function update_{self.pwm_key}(values) {{
+                const pwm = values["{self.pwm_key}"] ?? 0;
+                const dir = values["{self.dir_key}"] ?? "stopped";
+                const emergency = values["{self.emergency_key}"] ?? false;
 
-            // Limit number to 2 digits
-            const pwm_display = Math.round(pwm).toString().slice(0, 4);
+                // Limit number to 2 digits
+                const pwm_display = Math.round(pwm).toString().slice(0, 4);
 
-            // Update numeric display
-            document.getElementById("{self.pwm_key}_value").innerText = pwm_display;
+                // Update numeric display
+                document.getElementById("{self.pwm_key}_value").innerText = pwm_display;
 
-            // Update direction text
-            const dirElem = document.getElementById("{self.dir_key}_value");
-            dirElem.innerText = dir;
+                // Update direction text
+                const dirElem = document.getElementById("{self.dir_key}_value");
+                dirElem.innerText = dir;
 
-            // Normalize PWM to -100..100
-            let pct = Math.min(100, Math.max(0, (pwm / 255) * 100));
+                // Normalize PWM to -100..100
+                let pct = Math.min(100, Math.max(0, (pwm / 255) * 100));
 
-            // Bar element
-            const bar = document.getElementById("{self.pwm_key}_bar");
+                // Bar element
+                const bar = document.getElementById("{self.pwm_key}_bar");
 
-            // Emergency stop → everything red
-            if (emergency) {{
-                bar.style.background = "#ff1744";
-                dirElem.style.color = "#ff1744";
-            }} else {{
-                bar.style.background = "#4caf50";
-                dirElem.style.color = "white";
+                // Emergency stop → everything red
+                if (emergency) {{
+                    bar.style.background = "#ff1744";
+                    dirElem.style.color = "#ff1744";
+                }} else {{
+                    bar.style.background = "#4caf50";
+                    dirElem.style.color = "white";
+                }}
+
+                // Fill from center
+                if (dir === "forward") {{
+                    bar.style.marginLeft = (50 - pct/2) + "%";
+                    bar.style.width = (pct/2) + "%";
+                }}
+                else if (dir === "backward") {{
+                    bar.style.marginLeft = "50%";
+                    bar.style.width = (pct/2) + "%";
+                }}
+                else {{
+                    // stopped
+                    bar.style.marginLeft = "50%";
+                    bar.style.width = "0%";
+                }}
             }}
-
-            // Fill from center
-            if (dir === "forward") {{
-                bar.style.marginLeft = (50 - pct/2) + "%";
-                bar.style.width = (pct/2) + "%";
-            }}
-            else if (dir === "backward") {{
-                bar.style.marginLeft = "50%";
-                bar.style.width = (pct/2) + "%";
-            }}
-            else {{
-                // stopped
-                bar.style.marginLeft = "50%";
-                bar.style.width = "0%";
-            }}
-        }}
         """
 
     def update_js(self):
-        return f"""update_{self.pwm_key}(data)"""
+        return f"""
+            // ### Motor Component (update js) ###
+            update_{self.pwm_key}(data)
+"""

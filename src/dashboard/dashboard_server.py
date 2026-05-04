@@ -11,19 +11,30 @@ from dashboard.render.BatteryGaugeComponent import BatteryGaugeComponent
 from dashboard.render.ControlButtonsComponent import ControlButtonsComponent
 from dashboard.render.ObstaclesComponent import ObstacleSensorsComponent
 from dashboard.render.MotorComponent import MotorComponent
+from dashboard.render.SelectBotComponent import SelectedBotComponent
 
 
 XMPP_DOMAIN = os.environ.get("XMPP_DOMAIN", "prosody")
 BUTTONS = [
-    {"text": "Start", "target_jid": f"{NAVIGATOR_JID}", "command": "request path"},
-    {"text": "Register", "target_jid": f"{SENSORS_JID}", "command": "register"},
-    {"text": "Calibrate ratio", "target_jid": f"{CALIBRATOR_JID}", "command": "calibrate ratio"},
-    {"text": "Calibrate rotation", "target_jid": f"{CALIBRATOR_JID}", "command": "calibrate rotation"},
-    {"text": "Calibrate distance", "target_jid": f"{CALIBRATOR_JID}", "command": "calibrate distance"},
+    # target_jid full jid will be managed by the agent put only the first part
+    # However if you want to put the full JID don't forget the @
+    {"text": "Start", "target_jid": "navigator", "command": "request path"},
+    {"text": "Register", "target_jid": "sensors", "command": "register"},
+    {"text": "Calibrate ratio", "target_jid": "calibrator", "command": "calibrate ratio"},
+    {"text": "Calibrate rotation", "target_jid": "calibrator", "command": "calibrate rotation"},
+    {"text": "Calibrate distance", "target_jid": "calibrator", "command": "calibrate distance"},
+    {"text": "Start Timer (mock)", "target_jid": TIMEKEEPER_JID, "command": "hello"},
 ]
 DIGITAL_GRAPH = [
     {"label": "Left", "data_label": "digital_2"},
     {"label": "Right", "data_label": "digital_1"}
+]
+SELECT_BOT = [
+    {"label": "Bot 1", "bot_id": "alphabot21-agent"},
+    {"label": "Bot 2", "bot_id": "alphabot22-agent"},
+    {"label": "Bot 3", "bot_id": "alphabot23-agent"},
+    {"label": "Bot 4", "bot_id": "alphabot24-agent"},
+    {"label": "TEST", "bot_id": f"test"},
 ]
 
 
@@ -42,6 +53,7 @@ class Dashboard:
         digitals = DigitalGraphComponent(DIGITAL_GRAPH)
         components = [
             PageComponent(),
+            SelectedBotComponent(SELECT_BOT),
             ObstacleSensorsComponent(),
             BatteryGaugeComponent(),
             motor_left,
@@ -58,10 +70,13 @@ class Dashboard:
 
         html_blocks = (
             row(
+                SelectedBotComponent(SELECT_BOT).render_html(),
+                BatteryGaugeComponent().render_html(),
+            )
+            + row(
                 motor_left.render_html(),
                 ObstacleSensorsComponent().render_html(),
                 motor_right.render_html(),
-                BatteryGaugeComponent().render_html(),
             )
             + buttons.render_html()
             + row(
@@ -80,15 +95,17 @@ class Dashboard:
 
 {html_blocks}
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script><script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 
 <script>
             const ws = new WebSocket("ws://" + location.host + "/ws");
+
+
+
 {js_script}
 
 ws.onmessage = (event) => {{
-    console.log("Full event:", event);
     let msg;
 
     try {{
@@ -161,14 +178,27 @@ ws.onmessage = (event) => {{
 
     async def _get_analog_data(self, request):
         agent = request.app["agent"]
-        data = agent.store.query_analog(minutes=15)
+        bot = agent.selected_bot
+        data = agent.store.query_analog(bot)
         return web.json_response(data)
 
     async def _get_digital_data(self, request):
         agent = request.app["agent"]
-        data = agent.store.query_digital(minutes=15)
+        bot = agent.selected_bot
+        data = agent.store.query_digital(bot)
         return web.json_response(data)
 
+    async def _get_bots(self, request):
+        agent = request.app["agent"]
+        bots = agent.store.list_bots()
+        return web.json_response({"bots": bots})
+
+    async def _set_selected_bot(self, request):
+        agent = request.app["agent"]
+        data = await request.json()
+        bot = data.get("bot")
+        agent.set_selected_bot(bot)
+        return web.json_response({"ok": True})
 
     async def broadcast(self, sample):
         self.latest = sample
@@ -184,6 +214,8 @@ ws.onmessage = (event) => {{
         app.router.add_get("/ws", self._ws_handler)
         app.router.add_get("/api/analog", self._get_analog_data)
         app.router.add_get("/api/digital", self._get_digital_data)
+        app.router.add_get("/api/bots", self._get_bots)
+        app.router.add_post("/api/select_bot", self._set_selected_bot)
 
         return app
 

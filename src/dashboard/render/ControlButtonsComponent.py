@@ -5,7 +5,7 @@ class ControlButtonsComponent(DashboardComponent):
         self.buttons = buttons
 
     def render_html(self):
-        html = '<h2>Controls</h2><div style="display:flex; gap:10px;">'
+        html = '<div style="display:flex; gap:10px;">'
         for btn in self.buttons:
             html += (
                 f'<button onclick="sendCommand('
@@ -31,6 +31,7 @@ class ControlButtonsComponent(DashboardComponent):
 
     def render_js(self):
         return """
+            // ### Control Buttons Component (render js) ###
             function sendCommand(obj) {
                 ws.send(JSON.stringify(obj));
             }

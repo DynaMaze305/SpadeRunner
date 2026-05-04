@@ -44,6 +44,7 @@ class BatteryGaugeComponent(DashboardComponent):
 
     def render_js(self):
         return """
+            // ### Battery Gauge Component (render js) ###
             function updateBattery(percent) {
                 const level = document.getElementById("battery-level");
                 const text = document.getElementById("battery-text");
@@ -66,5 +67,6 @@ class BatteryGaugeComponent(DashboardComponent):
 
     def update_js(self):
         return """
+            // ### Battery Gauge Component (update js) ###
             updateBattery(data.battery);
         """

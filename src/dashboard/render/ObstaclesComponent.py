@@ -51,6 +51,7 @@ class ObstacleSensorsComponent(DashboardComponent):
 
     def render_js(self):
         return """
+            // ### Obstacle Sensors Component (render js) ###
             function updateDigitalLights(values) {
                 const left = values["digital_2"];
                 const right = values["digital_1"];
@@ -65,5 +66,6 @@ class ObstacleSensorsComponent(DashboardComponent):
 
     def update_js(self):
         return """
+            // ### Obstacle Sensors Component (update js) ###
             updateDigitalLights(data);
-        """
+"""
