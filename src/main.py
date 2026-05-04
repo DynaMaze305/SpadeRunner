@@ -31,47 +31,38 @@ from agents.calibrator.agent import CalibratorAgent
 from agents.navigator.agent import NavigatorAgent
 from agents.camera_receiver.agent import CameraReceiverAgent
 from agents.navigator_request.agent import NavigationRequesterAgent
-from agents.telemetry.agent import TelemetryAgent  # disabled: grafana/logger flow off
+from agents.telemetry.agent import TelemetryAgent
 from common.runner import run_agent, start_agent
 
-# Maps MODE value to the agent class
-AGENTS = {
-    "calibrator": CalibratorAgent,
-    "navigator": NavigatorAgent,
+# Default: navigator + telemetry + calibrator all running, dashboard drives them.
+# MODE picks a test agent that takes the bot exclusively (skips the production triad).
+TEST_AGENTS = {
+    "bounce_test": BounceTestAgent,
     "camera_test": CameraReceiverAgent,
     "navigator_request": NavigationRequesterAgent,
-    "telemetry": TelemetryAgent,  # disabled: grafana/logger flow off
-    "bounce_test": BounceTestAgent,
 }
 
 
 async def main():
-    # Reads the MODE env variable and looks up the agent class
-    mode = os.getenv("MODE", "calibrator")
-    if mode not in AGENTS:
-        logger.error(f"Unknown MODE '{mode}', valid modes: {list(AGENTS.keys())}")
-        return
-
-    logger.info(f"Running in {mode.upper()} mode")
+    mode = os.getenv("MODE", "").strip()
 
     active = []
 
-    # starts the picked agent in the background (non-blocking)
-    primary = await start_agent(AGENTS[mode])
-    if primary:
-        active.append(primary)
-
-    # also starts the dashboard alongside (unless MODE was already telemetry)
-    if AGENTS[mode] is not TelemetryAgent:
-        dashboard = await start_agent(TelemetryAgent)
-        if dashboard:
-            active.append(dashboard)
-
-    # always keep the calibrator on standby so the dashboard can trigger it
-    if AGENTS[mode] is not CalibratorAgent:
-        calibrator = await start_agent(CalibratorAgent)
-        if calibrator:
-            active.append(calibrator)
+    # test mode: run only the chosen test agent, no production triad
+    if mode:
+        if mode not in TEST_AGENTS:
+            logger.error(f"Unknown MODE '{mode}', valid: {list(TEST_AGENTS.keys())} or empty")
+            return
+        logger.info(f"test mode: {mode}")
+        test_agent = await start_agent(TEST_AGENTS[mode])
+        if test_agent:
+            active.append(test_agent)
+    else:
+        # production triad — always all three, dashboard buttons trigger work on demand
+        for AgentClass in (NavigatorAgent, TelemetryAgent, CalibratorAgent):
+            started = await start_agent(AgentClass)
+            if started:
+                active.append(started)
 
     logger.info(f"agents started: {[a.jid for a in active]}")
 
