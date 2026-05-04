@@ -5,6 +5,7 @@ used to validate soft-bounce + hard-emergency without the full nav pipeline.
 
 import json
 import logging
+import random
 
 from spade import agent, behaviour
 from spade.message import Message
@@ -122,6 +123,12 @@ class BounceTestAgent(agent.Agent):
                     continue
                 else:
                     logger.warning(f"unknown command from {msg.sender}: '{body}'")
+
+            # latch tripped but no side info from the bot (typical "started stuck"):
+            # pick a random side so we still try to dodge
+            if side is None and self.motion.last_emergency:
+                side = random.choice(["0", "1"])
+                logger.warning(f"[EMERGENCY] no side info, picking random direction: {side}")
 
             if side is None:
                 return False
