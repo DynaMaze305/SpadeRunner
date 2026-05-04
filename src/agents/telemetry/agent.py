@@ -9,7 +9,7 @@ from aiohttp import web
 from spade import agent, behaviour
 from spade.message import Message
 
-from common.config import BOUNCE_TEST_JID, CALIBRATOR_JID, NAVIGATOR_JID
+from common.config import BOUNCE_TEST_JID, CALIBRATOR_JID, NAVIGATOR_JID, ROBOT_JID
 from dashboard.dashboard_server import Dashboard
 from agents.telemetry.telemetrystore import TelemetryStore
 
@@ -115,16 +115,19 @@ class TelemetryAgent(agent.Agent):
             logger.warning(f"[AGENT] Unknown message type: {msg_type}")
 
     class XMPPSendMessage(behaviour.OneShotBehaviour):
-        def __init__(self, cmd: str, target: str):
+        def __init__(self, cmd: str, target: str, extra_metadata: dict | None = None):
             super().__init__()
             self.cmd = cmd
             self.target = target
+            self.extra_metadata = extra_metadata or {}
 
         async def run(self):
             logger.info(f"[AGENT] handle_command: {self.cmd}")
 
             msg = Message(to=self.target)
             msg.set_metadata("performative", "request")
+            for key, value in self.extra_metadata.items():
+                msg.set_metadata(key, value)
             msg.body = f"{self.cmd}"
             await self.send(msg)
             logger.info(f"[AGENT] Sent XMPP message: {msg}")
@@ -170,6 +173,10 @@ class TelemetryAgent(agent.Agent):
         if cmd == "stop":
             for jid in (NAVIGATOR_JID, CALIBRATOR_JID, BOUNCE_TEST_JID):
                 self.add_behaviour(self.XMPPSendMessage("stop", jid))
+            # also tell the bot directly so any in-flight motion is interrupted
+            self.add_behaviour(self.XMPPSendMessage(
+                "stop", ROBOT_JID, extra_metadata={"emergency": "controller"},
+            ))
             return
         self.add_behaviour(self.XMPPSendMessage(cmd, target))
 
