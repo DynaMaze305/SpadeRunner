@@ -36,6 +36,15 @@ class BounceTestAgent(agent.Agent):
 
         async def on_start(self):
             self.motion = MotionClient(self, jid=ROBOT_JID)
+            # toss any offline messages Prosody queued while we were down
+            drained = 0
+            while True:
+                stale = await self.receive(timeout=0.1)
+                if stale is None:
+                    break
+                drained += 1
+            if drained:
+                logger.info(f"discarded {drained} stale message(s) from offline queue")
             logger.info("bounce test ready, waiting for 'start bounce' command")
 
         async def run(self):
