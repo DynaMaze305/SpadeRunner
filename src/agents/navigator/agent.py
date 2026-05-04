@@ -17,6 +17,7 @@ from common.path_motion_executor import PathMotionExecutor
 from common.run_dir import new_run_dir
 
 from pathfinding.path_command_converter import PathCommandConverter
+from pathfinding.mini_grid_planner import MiniGridPlanner
 
 
 logging.basicConfig(level=logging.INFO)
@@ -68,7 +69,13 @@ class NavigatorAgent(agent.Agent):
                 min_gap=cfg.grid_min_gap,
             )
             localizer = RobotLocalizationStep(angle_offset_deg=cfg.angle_offset_deg)
-            planner = PathPlanner()
+            planner = PathPlanner(
+                mini_grid_planner=MiniGridPlanner(
+                    divisions=cfg.obstacle_mini_grid_divisions,
+                    obstacle_margin_px=cfg.obstacle_avoidance_margin_px,
+                    robot_margin_px=cfg.robot_clearance_margin_px,
+                )
+            )
             converter = PathCommandConverter()
             executor = PathMotionExecutor(
                 behaviour=self,
@@ -85,9 +92,9 @@ class NavigatorAgent(agent.Agent):
                 localizer=localizer.localizer,
                 obstacle_margin_px=cfg.obstacle_avoidance_margin_px,
                 robot_margin_px=cfg.robot_clearance_margin_px,
-                contour_padding_px=cfg.contour_demo_padding_px,
                 safe_cell_inset_px=cfg.safe_cell_inset_px,
                 safe_cell_inset_start_factor=cfg.safe_cell_inset_start_factor,
+                mini_grid_divisions=cfg.obstacle_mini_grid_divisions,
             )
 
             orch = NavigationOrchestrator(

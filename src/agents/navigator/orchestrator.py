@@ -21,8 +21,6 @@ from agents.navigator.vision_pipeline import (
 )
 
 from pathfinding.path_command_converter import PathCommandConverter
-from pathfinding.obstacle_avoider import ObstacleAvoider
-from pathfinding.pathfinding import obstacle_cells_from_frame
 from vision.camera import Camera
 
 
@@ -62,8 +60,6 @@ class NavigationOrchestrator:
         # Cache of the maze structure (crop_bbox, walls, grid lines) from the
         # first successful frame; reused thereafter to skip the wall pipeline.
         cached_frame = None
-        active_contour_points: list[tuple[int, int]] | None = None
-        active_contour_next_index = 1
 
         for step in range(cfg.max_steps):
             logger.info(f"\n========== STEP {step} ==========")
@@ -214,7 +210,7 @@ class NavigationOrchestrator:
                 and distance_to_target_mm <= cfg.cell_reached_radius_mm
             )
 
-            if current_cell == cfg.target_cell or within_radius:
+            if within_radius:
                 logger.info("[SUCCESS] Reached destination")
                 self._save_debug(step, image=frame.image, frame=frame, robot_pose=robot, path=None)
                 return NavigationResult(
@@ -224,179 +220,72 @@ class NavigationOrchestrator:
                     message="reached target",
                 )
 
-            path = self.planner.plan(frame, current_cell, cfg.target_cell)
-            if path is None or len(path) < 2:
-                logger.error("[ERROR] No valid path")
+            if target_center is None:
+                logger.error(f"[ERROR] Target cell {cfg.target_cell} has no center")
                 self._save_debug(step, image=frame.image, frame=frame, robot_pose=robot, path=None)
                 return NavigationResult(
                     NavigationOutcome.FAILED_NO_PATH,
                     last_cell=current_cell,
                     steps_taken=step,
-                    message="no valid path",
+                    message=f"invalid target cell {cfg.target_cell}",
                 )
 
-            logger.info(f"[PATH] full: {path}")
-            logger.info(f"[PATH] length: {len(path)}")
-
-            next_step_cells = path[: cfg.lookahead]
-            logger.info(f"[STEP] next_step: {next_step_cells}")
-
-            commands = None
-            blocked_next_cell = None
-            contour_points = active_contour_points
-            used_contour_segment = False
             robot_local_pos = self._robot_local_position(frame, robot)
-
-            if active_contour_points is not None:
-                while (
-                    active_contour_next_index < len(active_contour_points)
-                    and math.dist(
-                        robot_local_pos,
-                        active_contour_points[active_contour_next_index],
-                    ) <= cfg.contour_waypoint_reached_px
-                ):
-                    logger.info(
-                        f"[OBSTACLE] contour waypoint reached: "
-                        f"{active_contour_points[active_contour_next_index]}"
-                    )
-                    active_contour_next_index += 1
-
-                if active_contour_next_index < len(active_contour_points):
-                    target_point = active_contour_points[active_contour_next_index]
-                    contour_step_points = [robot_local_pos, target_point]
-                    logger.info(
-                        f"[OBSTACLE] continuing contour route "
-                        f"{active_contour_next_index}/{len(active_contour_points) - 1}: "
-                        f"{contour_step_points}"
-                    )
-                    commands = self.converter.points_to_commands(
-                        path=contour_step_points,
-                        start_angle=current_angle,
-                    )
-                    self._inject_point_move_distances(commands)
-                    used_contour_segment = True
-                else:
-                    logger.info("[OBSTACLE] contour route completed")
-                    active_contour_points = None
-                    contour_points = None
-
-            if commands is None:
-                blocked_next_cell = self._blocked_next_cell(frame, path)
-
-            if commands is None and blocked_next_cell is not None:
-                logger.info(
-                    f"[OBSTACLE] next cell {blocked_next_cell} is blocked; "
-                    f"obstacle margin={cfg.obstacle_avoidance_margin_px}px, "
-                    f"robot margin={cfg.robot_clearance_margin_px}px, "
-                    f"contour padding={cfg.contour_demo_padding_px}px"
+            point_path = self.planner.plan_points(
+                frame=frame,
+                start_cell=current_cell,
+                end_cell=cfg.target_cell,
+                start_point=robot_local_pos,
+                goal_point=target_center,
+            )
+            if point_path is None or len(point_path) < 1:
+                logger.error("[ERROR] No valid mini-grid path")
+                self._save_debug(step, image=frame.image, frame=frame, robot_pose=robot, path=None)
+                return NavigationResult(
+                    NavigationOutcome.FAILED_NO_PATH,
+                    last_cell=current_cell,
+                    steps_taken=step,
+                    message="no valid mini-grid path",
                 )
-                contour_points = self._contour_next_blocked_cell(
+
+            waypoint = self._next_point_waypoint(robot_local_pos, point_path)
+            if waypoint is None:
+                logger.info("[SUCCESS] Reached mini-grid target")
+                self._save_debug(
+                    step,
+                    image=frame.image,
                     frame=frame,
-                    robot=robot,
-                    path=path,
+                    robot_pose=robot,
+                    path=None,
+                    point_path=point_path,
                 )
-                if contour_points is None:
-                    logger.error(
-                        f"[OBSTACLE] contour failed for blocked next cell "
-                        f"{blocked_next_cell}; refusing straight move"
-                    )
-                    self._save_debug(
-                        step,
-                        image=frame.image,
-                        frame=frame,
-                        robot_pose=robot,
-                        path=path,
-                    )
-                    return NavigationResult(
-                        NavigationOutcome.FAILED_NO_PATH,
-                        last_cell=current_cell,
-                        steps_taken=step,
-                        message=f"blocked next cell {blocked_next_cell}",
-                    )
-
-                active_contour_points = self._dedupe_points(contour_points)
-                active_contour_next_index = 1
-                contour_points = active_contour_points
-                if len(active_contour_points) < 2:
-                    logger.error(
-                        f"[OBSTACLE] contour produced no executable segment for "
-                        f"{blocked_next_cell}"
-                    )
-                    return NavigationResult(
-                        NavigationOutcome.FAILED_NO_PATH,
-                        last_cell=current_cell,
-                        steps_taken=step,
-                        message=f"no contour segment for {blocked_next_cell}",
-                    )
-                contour_step_points = [
-                    robot_local_pos,
-                    active_contour_points[active_contour_next_index],
-                ]
-
-                logger.info(f"[OBSTACLE] contour path: {contour_points}")
-                logger.info(f"[OBSTACLE] executing contour segment: {contour_step_points}")
-                commands = self.converter.points_to_commands(
-                    path=contour_step_points,
-                    start_angle=current_angle,
+                return NavigationResult(
+                    NavigationOutcome.REACHED,
+                    last_cell=current_cell,
+                    steps_taken=step,
+                    message="reached target",
                 )
-                self._inject_point_move_distances(commands)
-                used_contour_segment = True
 
-            used_point_path = False
-
-            if commands is None:
-                # Pick the next checkpoint: stay on the current cell's center
-                # until we are within cell_reached_radius_mm, only then advance.
-                current_center = self._safe_cell_center_local(current_cell, frame)
-                distance_to_current_center_mm = None
-                if current_center is not None:
-                    distance_to_current_center_mm = math.hypot(
-                        current_center[0] - robot_local_pos[0],
-                        current_center[1] - robot_local_pos[1],
-                    ) * cfg.mm_per_pixel
-
-                # Stay on the current cell center if we haven't reached it yet
-                if (
-                    current_center is not None
-                    and distance_to_current_center_mm > cfg.cell_reached_radius_mm
-                ):
-                    waypoint = current_center
-                    logger.info(
-                        f"[CHECKPOINT] heading to {current_cell} center, "
-                        f"distance={distance_to_current_center_mm:.0f} mm "
-                        f"(radius={cfg.cell_reached_radius_mm:.0f} mm)"
-                    )
-                else:
-                    # Otherwise advance to the next cell on the path
-                    waypoint = self._safe_cell_center_local(path[1], frame)
-                    logger.info(f"[CHECKPOINT] advancing to {path[1]} safe center")
-
-                # Aim straight at the chosen waypoint pixel center
-                if waypoint is not None:
-                    commands = self.converter.points_to_commands(
-                        path=[robot_local_pos, waypoint],
-                        start_angle=current_angle,
-                    )
-                    self._inject_point_move_distances(commands)
-                    used_point_path = True
-                else:
-                    # Fallback to the cardinal cell-based path if we cannot find a center
-                    commands = self.converter.path_to_commands(
-                        path=next_step_cells,
-                        start_angle=current_angle,
-                    )
+            logger.info(f"[PATH] mini-grid length: {len(point_path)}")
+            logger.info(f"[STEP] next mini waypoint: {waypoint}")
+            commands = self.converter.points_to_commands(
+                path=[robot_local_pos, waypoint],
+                start_angle=current_angle,
+            )
+            self._inject_point_move_distances(commands)
 
             logger.info(f"[COMMANDS] {commands}")
 
-            # Annotate move commands with the actual mm distance derived from the
-            # current camera frame, so the executor sends a per-step distance
-            # instead of always using cfg.move_distance.
-            if blocked_next_cell is None and not used_contour_segment and not used_point_path:
-                self._inject_move_distances(commands, frame, robot)
-
             # Save the composite BEFORE motion executes so the card reflects
             # what the navigator decided, not what the robot ended up doing.
-            self._save_debug(step, image=frame.image, frame=frame, robot_pose=robot, path=path)
+            self._save_debug(
+                step,
+                image=frame.image,
+                frame=frame,
+                robot_pose=robot,
+                path=None,
+                point_path=point_path,
+            )
 
             # Push the just-saved per-step path image to the logger.
             if self.notify_logger is not None and self.debug is not None:
@@ -420,15 +309,6 @@ class NavigationOrchestrator:
                     steps_taken=step,
                     message="motion execution failed",
                 )
-
-            if used_contour_segment:
-                active_contour_next_index += 1
-                if (
-                    active_contour_points is not None
-                    and active_contour_next_index >= len(active_contour_points)
-                ):
-                    logger.info("[OBSTACLE] contour route completed")
-                    active_contour_points = None
 
         logger.error("[FAIL] Max steps reached")
         return NavigationResult(
@@ -536,39 +416,6 @@ class NavigationOrchestrator:
             return None
         return robot.angle_deg
 
-    # Mutates each "move" command in `commands` to add `distance_mm`. The first
-    # move is measured from the robot's actual pixel position; subsequent moves
-    # chain through cell centres.
-    def _inject_move_distances(
-        self,
-        commands: list[dict],
-        frame,
-        robot,
-    ) -> None:
-        if not commands:
-            return
-
-        x1, y1, _, _ = frame.maze["crop_bbox"]
-        current_pos = (
-            int(robot.center[0] - x1),
-            int(robot.center[1] - y1),
-        )
-        mm_per_pixel = self.config.mm_per_pixel
-
-        for cmd in commands:
-            if cmd.get("action") != "move":
-                continue
-            target_pos = self._safe_cell_center_local(cmd.get("to"), frame)
-            if target_pos is None:
-                continue
-            distance_px = math.hypot(
-                target_pos[0] - current_pos[0],
-                target_pos[1] - current_pos[1],
-            )
-            # Scale by the fraction so the loop can re-localize between partial moves
-            cmd["distance_mm"] = distance_px * mm_per_pixel * self.config.move_distance_fraction
-            current_pos = target_pos
-
     def _inject_point_move_distances(self, commands: list[dict]) -> None:
         for cmd in commands:
             if cmd.get("action") != "move":
@@ -580,16 +427,6 @@ class NavigationOrchestrator:
             cmd["distance_mm"] = float(distance_px) * self.config.mm_per_pixel * self.config.move_distance_fraction
 
     @staticmethod
-    def _dedupe_points(
-        points: list[tuple[int, int]],
-    ) -> list[tuple[int, int]]:
-        deduped: list[tuple[int, int]] = []
-        for point in points:
-            if not deduped or point != deduped[-1]:
-                deduped.append(point)
-        return deduped
-
-    @staticmethod
     def _robot_local_position(frame, robot) -> tuple[int, int]:
         x1, y1, _, _ = frame.maze["crop_bbox"]
         return (
@@ -597,107 +434,16 @@ class NavigationOrchestrator:
             int(robot.center[1] - y1),
         )
 
-    def _blocked_next_cell(self, frame, path: list[str]) -> str | None:
-        if len(path) < 2:
-            return None
-
-        current_cell = path[0]
-        next_cell = path[1]
-        blocked_cells = obstacle_cells_from_frame(
-            frame,
-            ignored_cells={current_cell, self.config.target_cell},
-        )
-        if next_cell in blocked_cells:
-            return next_cell
-        return None
-
-    def _contour_next_blocked_cell(
-        self,
-        frame,
-        robot,
-        path: list[str],
-    ) -> list[tuple[int, int]] | None:
-        if len(path) < 2:
-            return None
-
-        current_cell = path[0]
-        next_cell = path[1]
-
-        x1, y1, _, _ = frame.maze["crop_bbox"]
-        start = (
-            int(robot.center[0] - x1),
-            int(robot.center[1] - y1),
-        )
-        end = self._blocked_cell_exit_point(
-            current_cell,
-            next_cell,
-            frame.x_lines,
-            frame.y_lines,
-        )
-        if end is None:
-            return None
-
-        avoider = ObstacleAvoider(
-            margin=self.config.obstacle_avoidance_margin_px,
-            robot_margin=self.config.robot_clearance_margin_px,
-            bypass_padding=self.config.contour_demo_padding_px,
-        )
-        adjusted = avoider.adjust_path([start, end], frame.obstacles)
-        if adjusted is None:
-            return None
-
-        if len(adjusted) <= 2:
-            logger.info(
-                f"[OBSTACLE] blocked cell {next_cell}, but direct point path is clear"
-            )
-
-        return adjusted
-
-    def _blocked_cell_exit_point(
-        self,
-        current_cell: str,
-        next_cell: str,
-        x_lines: list[int],
-        y_lines: list[int],
+    @staticmethod
+    def _next_point_waypoint(
+        robot_local_pos: tuple[int, int],
+        point_path: list[tuple[int, int]],
+        reached_px: float = 2.0,
     ) -> tuple[int, int] | None:
-        current_rc = self._cell_rc(current_cell)
-        next_rc = self._cell_rc(next_cell)
-        if current_rc is None or next_rc is None:
-            return self._cell_center_local(next_cell, x_lines, y_lines)
-
-        current_row, current_col = current_rc
-        next_row, next_col = next_rc
-        row_delta = next_row - current_row
-        col_delta = next_col - current_col
-
-        if next_row < 0 or next_row >= len(y_lines) - 1:
-            return None
-        if next_col < 0 or next_col >= len(x_lines) - 1:
-            return None
-
-        x_left = x_lines[next_col]
-        x_right = x_lines[next_col + 1]
-        y_top = y_lines[next_row]
-        y_bottom = y_lines[next_row + 1]
-        cx = (x_left + x_right) // 2
-        cy = (y_top + y_bottom) // 2
-
-        inset = max(
-            3,
-            self.config.obstacle_avoidance_margin_px
-            + self.config.robot_clearance_margin_px,
-        )
-
-        if col_delta > 0:
-            return (x_right - inset, cy)
-        if col_delta < 0:
-            return (x_left + inset, cy)
-        if row_delta > 0:
-            return (cx, y_bottom - inset)
-        if row_delta < 0:
-            return (cx, y_top + inset)
-
-        return (cx, cy)
+        for point in point_path:
+            if math.dist(robot_local_pos, point) > reached_px:
+                return point
+        return None
 
     @staticmethod
     def _cell_rc(label: str | None) -> tuple[int, int] | None:
@@ -818,7 +564,7 @@ class NavigationOrchestrator:
         frame,
         robot_pose,
         path,
-        contour_path=None,
+        point_path=None,
     ) -> None:
         if self.debug is None:
             return
@@ -828,5 +574,5 @@ class NavigationOrchestrator:
             frame=frame,
             robot_pose=robot_pose,
             path=path,
-            contour_path=contour_path,
+            point_path=point_path,
         )

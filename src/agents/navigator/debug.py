@@ -37,9 +37,10 @@ PATH_GRID_VERTICAL = (255, 0, 0)
 PATH_GRID_HORIZONTAL = (0, 255, 0)
 PATH_LINE_COLOR = (0, 165, 255)
 PLANNED_PATH_FAINT_COLOR = (180, 210, 255)
+BYPASS_PATH_COLOR = (255, 128, 0)
+BYPASS_POINT_RADIUS = 4
+MINI_GRID_COLOR = (180, 180, 40)
 PATH_LINE_THICK = 4
-CONTOUR_PATH_COLOR = (255, 0, 255)
-CONTOUR_POINT_RADIUS = 6
 POSITION_DOT_COLOR = (0, 0, 255)
 POSITION_DOT_RADIUS = 8
 ARROW_COLOR = (128, 0, 128)
@@ -69,9 +70,9 @@ class NavigatorDebug:
         localizer,
         obstacle_margin_px: int = 0,
         robot_margin_px: int = 0,
-        contour_padding_px: int = 0,
         safe_cell_inset_px: int = 0,
         safe_cell_inset_start_factor: float = 0.45,
+        mini_grid_divisions: int = 9,
         camera: Camera | None = None,
     ) -> None:
         self.run_dir = run_dir
@@ -79,9 +80,9 @@ class NavigatorDebug:
         self.localizer = localizer
         self.obstacle_margin_px = obstacle_margin_px
         self.robot_margin_px = robot_margin_px
-        self.contour_padding_px = contour_padding_px
         self.safe_cell_inset_px = safe_cell_inset_px
         self.safe_cell_inset_start_factor = safe_cell_inset_start_factor
+        self.mini_grid_divisions = mini_grid_divisions
         self.camera = camera or Camera()
         os.makedirs(run_dir, exist_ok=True)
 
@@ -96,7 +97,7 @@ class NavigatorDebug:
         frame=None,
         robot_pose=None,
         path: list[str] | None = None,
-        contour_path: list[tuple[int, int]] | None = None,
+        point_path: list[tuple[int, int]] | None = None,
     ) -> None:
         image_with_axes = self.camera.draw_axes(image) if image is not None else None
 
@@ -134,7 +135,7 @@ class NavigatorDebug:
                     grid_walls=frame.grid_walls,
                 )
 
-        path_img = self._build_path_panel(frame, robot_pose, path, contour_path)
+        path_img = self._build_path_panel(frame, robot_pose, path, point_path)
         obstacles_img = self._build_obstacles_panel(frame)
 
         # Save individual full-resolution images into individuals/step_N/
@@ -211,7 +212,7 @@ class NavigatorDebug:
         frame,
         robot_pose,
         path: list[str] | None,
-        contour_path: list[tuple[int, int]] | None = None,
+        point_path: list[tuple[int, int]] | None = None,
     ) -> np.ndarray | None:
         if frame is None:
             return None
@@ -245,35 +246,28 @@ class NavigatorDebug:
                 int(robot_pose.center[1] - by1),
             )
 
-        if contour_path and len(contour_path) >= 2:
-            planned_waypoints = self._path_waypoints(
-                path, local_center, frame,
-            )
-            for a, b in zip(planned_waypoints[:-1], planned_waypoints[1:]):
-                cv2.line(canvas, a, b, PLANNED_PATH_FAINT_COLOR, 2)
-
-            for a, b in zip(contour_path[:-1], contour_path[1:]):
-                cv2.line(canvas, a, b, CONTOUR_PATH_COLOR, PATH_LINE_THICK)
-            for point in contour_path:
-                cv2.circle(canvas, point, CONTOUR_POINT_RADIUS, CONTOUR_PATH_COLOR, -1)
-
-            cv2.putText(
-                canvas,
-                "contour",
-                (contour_path[0][0] + 8, contour_path[0][1] - 8),
-                LABEL_FONT,
-                PATH_TEXT_SCALE,
-                CONTOUR_PATH_COLOR,
-                2,
-                cv2.LINE_AA,
-            )
-        elif path and len(path) >= 2:
+        if path and len(path) >= 2:
             waypoints = self._path_waypoints(
                 path, local_center, frame,
             )
 
             for a, b in zip(waypoints[:-1], waypoints[1:]):
-                cv2.line(canvas, a, b, PATH_LINE_COLOR, PATH_LINE_THICK)
+                color = PLANNED_PATH_FAINT_COLOR if point_path else PATH_LINE_COLOR
+                thickness = 2 if point_path else PATH_LINE_THICK
+                cv2.line(canvas, a, b, color, thickness)
+
+        if point_path and len(point_path) >= 1:
+            self._draw_mini_grid_for_points(canvas, frame, point_path)
+
+            bypass_waypoints = []
+            if local_center is not None:
+                bypass_waypoints.append(local_center)
+            bypass_waypoints.extend(point_path)
+
+            for a, b in zip(bypass_waypoints[:-1], bypass_waypoints[1:]):
+                cv2.line(canvas, a, b, BYPASS_PATH_COLOR, PATH_LINE_THICK)
+            for point in point_path:
+                cv2.circle(canvas, point, BYPASS_POINT_RADIUS, BYPASS_PATH_COLOR, -1)
 
         info_lines: list[str] = []
 
@@ -291,37 +285,44 @@ class NavigatorDebug:
 
             # Target heading arrow (green) toward the next cell in the path,
             # plus info text covering current/target/rotation/distance.
-            if path and len(path) >= 2:
+            if point_path:
+                next_center = point_path[0]
+                next_label = "mini"
+            elif path and len(path) >= 2:
                 next_cell = path[1]
                 next_center = self._safe_cell_center(next_cell, frame)
-                if next_center is not None:
-                    dx = next_center[0] - local_center[0]
-                    dy = next_center[1] - local_center[1]
-                    distance_px = math.hypot(dx, dy)
-                    # math-convention angle (image y inverted, consistent with the
-                    # rest of the codebase's angle handling).
-                    target_angle = math.degrees(math.atan2(-dy, dx))
-                    rotation = (
-                        target_angle - robot_pose.angle_deg + 180.0
-                    ) % 360.0 - 180.0
+                next_label = next_cell
+            else:
+                next_center = None
 
-                    target_rad = math.radians(target_angle)
-                    target_end = (
-                        int(local_center[0] + ARROW_LENGTH * math.cos(target_rad)),
-                        int(local_center[1] - ARROW_LENGTH * math.sin(target_rad)),
-                    )
-                    cv2.arrowedLine(
-                        canvas, local_center, target_end,
-                        TARGET_ARROW_COLOR, ARROW_THICK,
-                    )
+            if next_center is not None:
+                dx = next_center[0] - local_center[0]
+                dy = next_center[1] - local_center[1]
+                distance_px = math.hypot(dx, dy)
+                # math-convention angle (image y inverted, consistent with the
+                # rest of the codebase's angle handling).
+                target_angle = math.degrees(math.atan2(-dy, dx))
+                rotation = (
+                    target_angle - robot_pose.angle_deg + 180.0
+                ) % 360.0 - 180.0
 
-                    info_lines = [
-                        f"current: {robot_pose.angle_deg:+.1f}",
-                        f"target:  {target_angle:+.1f}",
-                        f"rotate:  {rotation:+.1f}",
-                        f"next:    {next_cell}",
-                        f"dist:    {distance_px:.0f} px",
-                    ]
+                target_rad = math.radians(target_angle)
+                target_end = (
+                    int(local_center[0] + ARROW_LENGTH * math.cos(target_rad)),
+                    int(local_center[1] - ARROW_LENGTH * math.sin(target_rad)),
+                )
+                cv2.arrowedLine(
+                    canvas, local_center, target_end,
+                    TARGET_ARROW_COLOR, ARROW_THICK,
+                )
+
+                info_lines = [
+                    f"current: {robot_pose.angle_deg:+.1f}",
+                    f"target:  {target_angle:+.1f}",
+                    f"rotate:  {rotation:+.1f}",
+                    f"next:    {next_label}",
+                    f"dist:    {distance_px:.0f} px",
+                ]
 
         if info_lines:
             y_text = 22
@@ -333,6 +334,64 @@ class NavigatorDebug:
                 y_text += PATH_TEXT_LINE_HEIGHT
 
         return canvas
+
+    def _draw_mini_grid_for_points(
+        self,
+        canvas: np.ndarray,
+        frame,
+        point_path: list[tuple[int, int]],
+    ) -> None:
+        counts: dict[tuple[int, int, int, int], int] = {}
+        for point in point_path:
+            cell_bounds = self._cell_bounds_for_point(point, frame.x_lines, frame.y_lines)
+            if cell_bounds is None:
+                continue
+            counts[cell_bounds] = counts.get(cell_bounds, 0) + 1
+
+        for cell_bounds, count in counts.items():
+            if count < 2:
+                continue
+            self._draw_mini_grid_cell(canvas, cell_bounds)
+
+    def _draw_mini_grid_cell(
+        self,
+        canvas: np.ndarray,
+        cell_bounds: tuple[int, int, int, int],
+    ) -> None:
+        x1, y1, x2, y2 = cell_bounds
+        divisions = max(1, self.mini_grid_divisions)
+        for i in range(1, divisions):
+            x = int(round(x1 + (x2 - x1) * i / divisions))
+            y = int(round(y1 + (y2 - y1) * i / divisions))
+            cv2.line(canvas, (x, y1), (x, y2), MINI_GRID_COLOR, 1)
+            cv2.line(canvas, (x1, y), (x2, y), MINI_GRID_COLOR, 1)
+
+        cv2.rectangle(canvas, (x1, y1), (x2, y2), MINI_GRID_COLOR, 2)
+
+    @staticmethod
+    def _cell_bounds_for_point(
+        point: tuple[int, int],
+        x_lines: list[int],
+        y_lines: list[int],
+    ) -> tuple[int, int, int, int] | None:
+        px, py = point
+        col = None
+        row = None
+
+        for c in range(len(x_lines) - 1):
+            if x_lines[c] <= px < x_lines[c + 1]:
+                col = c
+                break
+
+        for r in range(len(y_lines) - 1):
+            if y_lines[r] <= py < y_lines[r + 1]:
+                row = r
+                break
+
+        if row is None or col is None:
+            return None
+
+        return (x_lines[col], y_lines[row], x_lines[col + 1], y_lines[row + 1])
 
     def _path_waypoints(
         self,

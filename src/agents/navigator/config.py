@@ -40,11 +40,9 @@ class NavigatorConfig:
     # Cell width is 200 mm, average detected cell width is ~67.5 px -> ~2.96 mm/px.
     mm_per_pixel: float = 2.96
 
-    obstacle_avoidance_margin_px: int = 5
+    obstacle_avoidance_margin_px: int = 1
     robot_clearance_margin_px: int = 0
-    contour_demo_padding_px: int = 25
-    contour_waypoint_reached_px: int = 8
-
+    obstacle_mini_grid_divisions: int = 3
     # Fraction of the computed distance actually sent to the robot per step.
     # 1.0 = full move, 0.5 = half move (vision re-localizes between halves), etc.
     move_distance_fraction: float = 1.0
@@ -114,16 +112,10 @@ class NavigatorConfig:
                     str(cls.robot_clearance_margin_px),
                 )
             ),
-            contour_demo_padding_px=int(
+            obstacle_mini_grid_divisions=int(
                 os.getenv(
-                    "NAVIGATOR_CONTOUR_DEMO_PADDING_PX",
-                    str(cls.contour_demo_padding_px),
-                )
-            ),
-            contour_waypoint_reached_px=int(
-                os.getenv(
-                    "NAVIGATOR_CONTOUR_WAYPOINT_REACHED_PX",
-                    str(cls.contour_waypoint_reached_px),
+                    "NAVIGATOR_OBSTACLE_MINI_GRID_DIVISIONS",
+                    str(cls.obstacle_mini_grid_divisions),
                 )
             ),
             move_distance_fraction=float(
