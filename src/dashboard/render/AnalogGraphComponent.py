@@ -9,6 +9,7 @@ class AnalogGraphComponent(DashboardComponent):
 
     def render_js(self):
         return """
+            // ### Analog Grap Component (render js) ###
             const MAX_POINTS = 900; // 15 minutes
 
             // --- Data store (not inside the chart) ---

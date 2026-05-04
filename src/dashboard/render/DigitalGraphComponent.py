@@ -36,90 +36,91 @@ class DigitalGraphComponent(DashboardComponent):
         sensors_json = json.dumps(self.sensors)
 
         return f"""
-        const digitalSensors = {sensors_json};
+            // ### Digital Graph Component (render js) ###
+            const digitalSensors = {sensors_json};
 
-        // Create a chart object for each sensor
-        const digitalCharts = {{}};
+            // Create a chart object for each sensor
+            const digitalCharts = {{}};
 
-        function createDigitalChart(canvasId, label, color) {{
-            const ctx = document.getElementById(canvasId).getContext('2d');
-            return new Chart(ctx, {{
-                type: 'line',
-                data: {{
-                    labels: [],
-                    datasets: [
-                        {{
-                            label: label,
-                            data: [],
-                            borderColor: color,
-                            stepped: true,
-                            pointRadius: 0
-                        }}
-                    ]
-                }},
-                options: {{
-                    animation: false,
-                    responsive: true,
-                    scales: {{
-                        x: {{
-                            type: 'time',
-                            time: {{
-                                unit: 'minute',
-                                displayFormats: {{ minute: 'HH:mm' }}
+            function createDigitalChart(canvasId, label, color) {{
+                const ctx = document.getElementById(canvasId).getContext('2d');
+                return new Chart(ctx, {{
+                    type: 'line',
+                    data: {{
+                        labels: [],
+                        datasets: [
+                            {{
+                                label: label,
+                                data: [],
+                                borderColor: color,
+                                stepped: true,
+                                pointRadius: 0
+                            }}
+                        ]
+                    }},
+                    options: {{
+                        animation: false,
+                        responsive: true,
+                        scales: {{
+                            x: {{
+                                type: 'time',
+                                time: {{
+                                    unit: 'minute',
+                                    displayFormats: {{ minute: 'HH:mm' }}
+                                }},
+                                grid: {{ color: 'rgba(255,255,255,0.2)' }}
                             }},
-                            grid: {{ color: 'rgba(255,255,255,0.2)' }}
-                        }},
-                        y: {{
-                            min: 0,
-                            max: 1,
-                            grid: {{ color: 'rgba(255,255,255,0.2)' }}
+                            y: {{
+                                min: 0,
+                                max: 1,
+                                grid: {{ color: 'rgba(255,255,255,0.2)' }}
+                            }}
                         }}
                     }}
-                }}
-            }});
-        }}
-
-        // Initialize charts
-        const colors = ["#4caf50", "#ff5252", "#2196f3", "#ffb300", "#9c27b0"];
-        digitalSensors.forEach((sensor, i) => {{
-            const canvasId = "chart_" + sensor.data_label;
-            digitalCharts[sensor.data_label] = createDigitalChart(
-                canvasId,
-                sensor.label,
-                colors[i % colors.length]
-            );
-        }});
-
-        async function loadDigitalData() {{
-            const response = await fetch("/api/digital");
-            const data = await response.json();
-
-            // Collect timestamps
-            const timestamps = new Set();
-            for (const key in data) {{
-                data[key].forEach(p => timestamps.add(p.ts));
+                }});
             }}
-            const sortedTs = Array.from(timestamps).sort((a, b) => a - b);
 
-            // Update each chart
-            digitalSensors.forEach(sensor => {{
-                const key = sensor.data_label;
-                const chart = digitalCharts[key];
-
-                chart.data.labels = sortedTs;
-
-                if (!data[key]) {{
-                    chart.data.datasets[0].data = sortedTs.map(_ => null);
-                }} else {{
-                    chart.data.datasets[0].data = sortedTs.map(ts => {{
-                        const p = data[key].find(v => v.ts === ts);
-                        return p ? p.value : null;
-                    }});
-                }}
-
-                chart.update();
+            // Initialize charts
+            const colors = ["#4caf50", "#ff5252", "#2196f3", "#ffb300", "#9c27b0"];
+            digitalSensors.forEach((sensor, i) => {{
+                const canvasId = "chart_" + sensor.data_label;
+                digitalCharts[sensor.data_label] = createDigitalChart(
+                    canvasId,
+                    sensor.label,
+                    colors[i % colors.length]
+                );
             }});
-        }}
 
-        setInterval(loadDigitalData, 1000);
-        """
+            async function loadDigitalData() {{
+                const response = await fetch("/api/digital");
+                const data = await response.json();
+
+                // Collect timestamps
+                const timestamps = new Set();
+                for (const key in data) {{
+                    data[key].forEach(p => timestamps.add(p.ts));
+                }}
+                const sortedTs = Array.from(timestamps).sort((a, b) => a - b);
+
+                // Update each chart
+                digitalSensors.forEach(sensor => {{
+                    const key = sensor.data_label;
+                    const chart = digitalCharts[key];
+
+                    chart.data.labels = sortedTs;
+
+                    if (!data[key]) {{
+                        chart.data.datasets[0].data = sortedTs.map(_ => null);
+                    }} else {{
+                        chart.data.datasets[0].data = sortedTs.map(ts => {{
+                            const p = data[key].find(v => v.ts === ts);
+                            return p ? p.value : null;
+                        }});
+                    }}
+
+                    chart.update();
+                }});
+            }}
+
+            setInterval(loadDigitalData, 1000);
+"""

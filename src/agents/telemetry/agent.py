@@ -9,7 +9,7 @@ from aiohttp import web
 from spade import agent, behaviour
 from spade.message import Message
 
-from common.config import NAVIGATOR_JID
+from common.config import COORDINATOR_HOST
 from dashboard.dashboard_server import Dashboard
 from agents.telemetry.telemetrystore import TelemetryStore
 
@@ -50,7 +50,7 @@ class TelemetryAgent(agent.Agent):
             # Build telemetry payload (same as real bots)
             payload = {
                 "type": "data",
-                "bot": str(self.agent.jid),
+                "bot": f"telemetry-test@{COORDINATOR_HOST}",
                 "ts": time.time(),
                 "data": data
             }
@@ -126,7 +126,7 @@ class TelemetryAgent(agent.Agent):
         suitable for both SQL storage and dashboard broadcast.
         """
         ts = payload["ts"]
-        bot = payload["bot"]
+        bot = payload["bot"].split('-',1)[1].split('@')[0]
         data = payload["data"]
 
         flat = {}
@@ -160,9 +160,15 @@ class TelemetryAgent(agent.Agent):
         self.store.store_sample(sample)
 
     async def handle_command(self, cmd: str, target: str):
-        self.add_behaviour(self.XMPPSendMessage(cmd, target))
+        if "@" in target:
+            self.add_behaviour(self.XMPPSendMessage(cmd, target))
+        else:
+            target += f"-{self.selected_bot}@{COORDINATOR_HOST}"
+            self.add_behaviour(self.XMPPSendMessage(cmd, target))
 
     # ---------- setup ----------
+    def set_selected_bot(self, bot):
+        self.selected_bot = bot
 
     async def setup(self):
         logger.info("[AGENT] Starting TelemetryAgent...")
