@@ -49,6 +49,7 @@ BLOCKED_CELL_COLOR = (80, 80, 255)
 BLOCKED_CELL_ALPHA = 0.28
 RAW_OBSTACLE_COLOR = (0, 0, 255)
 INFLATED_OBSTACLE_COLOR = (255, 0, 255)
+ROBOT_EXCLUSION_COLOR = (255, 255, 0)
 
 # Target-direction arrow + path info text overlay (BGR).
 TARGET_ARROW_COLOR = (0, 180, 0)
@@ -364,10 +365,23 @@ class NavigatorDebug:
         for x1, y1, x2, y2 in frame.obstacles:
             cv2.rectangle(canvas, (x1, y1), (x2, y2), RAW_OBSTACLE_COLOR, 2)
 
+        for x1, y1, x2, y2 in getattr(frame, "obstacle_robot_exclusions", []):
+            cv2.rectangle(canvas, (x1, y1), (x2, y2), ROBOT_EXCLUSION_COLOR, 2)
+            cv2.putText(
+                canvas,
+                "robot ignored",
+                (x1, max(12, y1 - 6)),
+                LABEL_FONT,
+                0.45,
+                ROBOT_EXCLUSION_COLOR,
+                1,
+                cv2.LINE_AA,
+            )
+
         self._draw_obstacle_boxes(canvas, frame.obstacles)
         cv2.putText(
             canvas,
-            f"raw=red inflated=magenta obstacle={self.obstacle_margin_px}px robot={self.robot_margin_px}px contour={self.contour_padding_px}px",
+            f"raw=red inflated=magenta aruco-ignore=cyan obstacle={self.obstacle_margin_px}px robot={self.robot_margin_px}px",
             (8, 22),
             LABEL_FONT,
             0.45,
