@@ -44,7 +44,7 @@ class TelemetryStore:
     # -------------------------
     # Query analog data
     # -------------------------
-    def query_analog(self, minutes=15):
+    def query_analog(self, bot, minutes=15):
         since = time.time() - minutes * 60
         cur = self.db.cursor()
 
@@ -52,9 +52,10 @@ class TelemetryStore:
             SELECT ts, key, value
             FROM telemetry
             WHERE ts >= ?
+            AND bot = ?
             AND key LIKE 'analog_%'
             ORDER BY ts ASC
-        """, (since,))
+        """, (since, bot))
 
         rows = cur.fetchall()
 
@@ -63,7 +64,6 @@ class TelemetryStore:
             if key not in data:
                 data[key] = []
 
-            # Normalize timestamp to milliseconds (int)
             data[key].append({
                 "ts": int(ts * 1000),
                 "value": value
@@ -71,3 +71,38 @@ class TelemetryStore:
 
         return data
 
+    # -------------------------
+    # Query digital data
+    # -------------------------
+    def query_digital(self, bot, minutes=15):
+        since = time.time() - minutes * 60
+        cur = self.db.cursor()
+
+        cur.execute("""
+            SELECT ts, key, value
+            FROM telemetry
+            WHERE ts >= ?
+            AND bot = ?
+            AND key LIKE 'digital_%'
+            ORDER BY ts ASC
+        """, (since, bot))
+
+        rows = cur.fetchall()
+
+        data = {}
+        for ts, key, value in rows:
+            if key not in data:
+                data[key] = []
+
+            data[key].append({
+                "ts": int(ts * 1000),  # ms
+                "value": value
+            })
+
+        return data
+
+    def list_bots(self):
+        cur = self.db.cursor()
+        cur.execute("SELECT DISTINCT bot FROM telemetry ORDER BY bot ASC")
+        rows = cur.fetchall()
+        return [r[0] for r in rows]

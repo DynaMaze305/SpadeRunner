@@ -9,7 +9,7 @@ from aiohttp import web
 from spade import agent, behaviour
 from spade.message import Message
 
-from common.config import NAVIGATOR_JID
+from common.config import COORDINATOR_HOST
 from dashboard.dashboard_server import Dashboard
 from agents.telemetry.telemetrystore import TelemetryStore
 
@@ -33,7 +33,7 @@ class TelemetryAgent(agent.Agent):
     class FakeTelemetry(behaviour.PeriodicBehaviour):
         async def run(self):
             # Generate fake sensor values
-            data = {"sensors":{"digital":{},"analog":{}}, "motion": {}}
+            data = {"digital":{},"analog":{}, "motion": {}}
             data["digital"][1] = random.randint(0, 1)
             data["digital"][2] = random.randint(0, 1)
 
@@ -41,14 +41,16 @@ class TelemetryAgent(agent.Agent):
                 data["analog"][k] = random.random()
 
             data["battery"] = random.random() * 100
-            data["motion"]["speed"] = random.random()
-            data["motion"]["direction"] = random.random()
-            data["motion"]["rotation"] = random.random()
+            data["motion"]["left_pwm"] = random.random() * 100
+            data["motion"]["left_direction"] = ["stopped","forward","backward","unknown"][random.randint(0,3)]
+            data["motion"]["right_pwm"] = random.random() * 100
+            data["motion"]["right_direction"] = ["stopped","forward","backward","unknown"][random.randint(0,3)]
+            data["motion"]["emergency_stop"] = random.randint(0, 1)
 
             # Build telemetry payload (same as real bots)
             payload = {
                 "type": "data",
-                "bot": str(self.agent.jid),
+                "bot": f"telemetry-test@{COORDINATOR_HOST}",
                 "ts": time.time(),
                 "data": data
             }
@@ -101,6 +103,7 @@ class TelemetryAgent(agent.Agent):
                 return
 
             logger.warning(f"[AGENT] Unknown message type: {msg_type}")
+            logger.warning(f"[AGENT] {msg}")
 
     class XMPPSendMessage(behaviour.OneShotBehaviour):
         def __init__(self, cmd: str, target: str):
@@ -120,43 +123,53 @@ class TelemetryAgent(agent.Agent):
     # ---------- helpers ----------
     def _payload_to_samples(self, payload: dict) -> dict:
         """
-        Convert a raw telemetry payload into SQL rows.
-        Returns a list of tuples: (ts, bot, key, value)
+        Convert a raw telemetry payload into a flattened sample
+        suitable for both SQL storage and dashboard broadcast.
         """
         ts = payload["ts"]
-        bot = payload["bot"]
+        bot = payload["bot"].split('-',1)[1].split('@')[0]
         data = payload["data"]
 
-        rows = {}
+        flat = {}
 
         # --- Digital sensors ---
-        for k, v in data["digital"].items():
-            rows[f"digital_{k}"] = v
+        if "digital" in data:
+            for k, v in data["digital"].items():
+                flat[f"digital_{k}"] = v
 
         # --- Analog sensors ---
-        for k, v in data["analog"].items():
-            rows[f"analog_{k}"] = v
+        if "analog" in data:
+            for k, v in data["analog"].items():
+                flat[f"analog_{k}"] = v
 
         # --- Battery ---
-        rows["battery"] = data["battery"]
+        if "battery" in data:
+            flat["battery"] = data["battery"]
 
         # --- Motion ---
-        # for k, v in data["motion"].items():
-        #     rows[f"motion_{k}"] = v
+        if "motion" in data:
+            for k, v in data["motion"].items():
+                flat[f"motion_{k}"] = v
 
         return {
             "ts": ts,
             "bot": bot,
-            "values": rows
+            "values": flat
         }
 
     def _store_sample(self, sample: dict):
         self.store.store_sample(sample)
 
     async def handle_command(self, cmd: str, target: str):
-        self.add_behaviour(self.XMPPSendMessage(cmd, target))
+        if "@" in target:
+            self.add_behaviour(self.XMPPSendMessage(cmd, target))
+        else:
+            target += f"-{self.selected_bot}@{COORDINATOR_HOST}"
+            self.add_behaviour(self.XMPPSendMessage(cmd, target))
 
     # ---------- setup ----------
+    def set_selected_bot(self, bot):
+        self.selected_bot = bot
 
     async def setup(self):
         logger.info("[AGENT] Starting TelemetryAgent...")
