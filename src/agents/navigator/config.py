@@ -40,6 +40,11 @@ class NavigatorConfig:
     # Cell width is 200 mm, average detected cell width is ~67.5 px -> ~2.96 mm/px.
     mm_per_pixel: float = 2.96
 
+    obstacle_avoidance_margin_px: int = 5
+    robot_clearance_margin_px: int = 0
+    contour_demo_padding_px: int = 25
+    contour_waypoint_reached_px: int = 8
+
     # Fraction of the computed distance actually sent to the robot per step.
     # 1.0 = full move, 0.5 = half move (vision re-localizes between halves), etc.
     move_distance_fraction: float = 1.0
@@ -50,21 +55,38 @@ class NavigatorConfig:
     @classmethod
     def from_env(cls) -> "NavigatorConfig":
         return cls(
-            target_cell=os.getenv("TARGET_CELL", "C1"),
-            max_steps=int(os.getenv("MAX_STEPS", "50")),
-            max_bad_grid_retries=int(os.getenv("MAX_BAD_GRID_RETRIES", "5")),
-            expected_rows=int(os.getenv("EXPECTED_GRID_ROWS", "3")),
-            expected_cols=int(os.getenv("EXPECTED_GRID_COLS", "11")),
-            move_distance=float(os.getenv("NAVIGATOR_MOVE_DISTANCE", "200")),
-            move_pwm=int(os.getenv("NAVIGATOR_MOVE_PWM", "15")),
-            rotation_pwm=int(os.getenv("NAVIGATOR_ROTATION_PWM", "15")),
-            ratio=float(os.getenv("NAVIGATOR_RATIO", "1.02")),
-            rotation_ratio=float(os.getenv("NAVIGATOR_ROTATION_RATIO", "1.05")),
-            grid_threshold_ratio=float(os.getenv("NAVIGATOR_GRID_THRESHOLD_RATIO", "0.03")),
-            grid_min_gap=int(os.getenv("NAVIGATOR_GRID_MIN_GAP", "15")),
-            lookahead=int(os.getenv("NAVIGATOR_LOOKAHEAD", "2")),
-            photos_dir=os.getenv("NAVIGATOR_PHOTOS_DIR", "navigation_photos"),
-            request_timeout_s=int(os.getenv("NAVIGATOR_REQUEST_TIMEOUT_S", "9999")),
+            target_cell=os.getenv("TARGET_CELL", cls.target_cell),
+            max_steps=int(os.getenv("MAX_STEPS", str(cls.max_steps))),
+            max_bad_grid_retries=int(
+                os.getenv("MAX_BAD_GRID_RETRIES", str(cls.max_bad_grid_retries))
+            ),
+            expected_rows=int(os.getenv("EXPECTED_GRID_ROWS", str(cls.expected_rows))),
+            expected_cols=int(os.getenv("EXPECTED_GRID_COLS", str(cls.expected_cols))),
+            move_distance=float(
+                os.getenv("NAVIGATOR_MOVE_DISTANCE", str(cls.move_distance))
+            ),
+            move_pwm=int(os.getenv("NAVIGATOR_MOVE_PWM", str(cls.move_pwm))),
+            rotation_pwm=int(
+                os.getenv("NAVIGATOR_ROTATION_PWM", str(cls.rotation_pwm))
+            ),
+            ratio=float(os.getenv("NAVIGATOR_RATIO", str(cls.ratio))),
+            rotation_ratio=float(
+                os.getenv("NAVIGATOR_ROTATION_RATIO", str(cls.rotation_ratio))
+            ),
+            grid_threshold_ratio=float(
+                os.getenv(
+                    "NAVIGATOR_GRID_THRESHOLD_RATIO",
+                    str(cls.grid_threshold_ratio),
+                )
+            ),
+            grid_min_gap=int(
+                os.getenv("NAVIGATOR_GRID_MIN_GAP", str(cls.grid_min_gap))
+            ),
+            lookahead=int(os.getenv("NAVIGATOR_LOOKAHEAD", str(cls.lookahead))),
+            photos_dir=os.getenv("NAVIGATOR_PHOTOS_DIR", cls.photos_dir),
+            request_timeout_s=int(
+                os.getenv("NAVIGATOR_REQUEST_TIMEOUT_S", str(cls.request_timeout_s))
+            ),
             angle_offset_deg=float(
                 os.getenv("NAVIGATOR_ANGLE_OFFSET_DEG", str(ARUCO_ANGLE_OFFSET))
             ),
@@ -75,7 +97,31 @@ class NavigatorConfig:
                 os.getenv("NAVIGATOR_MAX_ROTATION_ATTEMPTS", "3")
             ),
             mm_per_pixel=float(
-                os.getenv("NAVIGATOR_MM_PER_PIXEL", "2.96")
+                os.getenv("NAVIGATOR_MM_PER_PIXEL", str(cls.mm_per_pixel))
+            ),
+            obstacle_avoidance_margin_px=int(
+                os.getenv(
+                    "NAVIGATOR_OBSTACLE_AVOIDANCE_MARGIN_PX",
+                    str(cls.obstacle_avoidance_margin_px),
+                )
+            ),
+            robot_clearance_margin_px=int(
+                os.getenv(
+                    "NAVIGATOR_ROBOT_CLEARANCE_MARGIN_PX",
+                    str(cls.robot_clearance_margin_px),
+                )
+            ),
+            contour_demo_padding_px=int(
+                os.getenv(
+                    "NAVIGATOR_CONTOUR_DEMO_PADDING_PX",
+                    str(cls.contour_demo_padding_px),
+                )
+            ),
+            contour_waypoint_reached_px=int(
+                os.getenv(
+                    "NAVIGATOR_CONTOUR_WAYPOINT_REACHED_PX",
+                    str(cls.contour_waypoint_reached_px),
+                )
             ),
             move_distance_fraction=float(
                 os.getenv(
