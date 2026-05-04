@@ -23,7 +23,7 @@ BUTTONS = [
     {"text": "Calibrate rotation", "target_jid": f"{CALIBRATOR_JID}", "command": "calibrate rotation", "exclusive": True},
     {"text": "Calibrate distance", "target_jid": f"{CALIBRATOR_JID}", "command": "calibrate distance", "exclusive": True},
     {"text": "Bounce test", "target_jid": f"{BOUNCE_TEST_JID}", "command": "start bounce", "exclusive": True},
-    {"text": "Stop", "target_jid": f"{TELEMETRY_JID}", "command": "stop", "exclusive": False},
+    {"text": "Stop", "target_jid": f"{TELEMETRY_JID}", "command": "stop", "exclusive": False, "variant": "danger"},
 ]
 
 class Dashboard:

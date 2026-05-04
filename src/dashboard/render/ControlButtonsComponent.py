@@ -8,9 +8,10 @@ class ControlButtonsComponent(DashboardComponent):
         html = '<h2>Controls</h2><div style="display:flex; gap:10px;">'
         for btn in self.buttons:
             exclusive = "true" if btn.get("exclusive") else "false"
+            variant = btn.get("variant", "default")
             html += (
                 f'<button class="ctrl-btn" data-text="{btn["text"]}" '
-                f'data-exclusive="{exclusive}" '
+                f'data-exclusive="{exclusive}" data-variant="{variant}" '
                 f'onclick="sendCommand(this, '
                 f'{{command: \'{btn["command"]}\', target: \'{btn["target_jid"]}\'}})">'
                 f'{btn["text"]}</button>'
@@ -31,6 +32,11 @@ class ControlButtonsComponent(DashboardComponent):
                 transition: background 0.2s;
             }
             button.ctrl-btn:hover:not(:disabled) { background:#81d4fa; }
+            button.ctrl-btn[data-variant="danger"] {
+                background:#e53935;
+                color:white;
+            }
+            button.ctrl-btn[data-variant="danger"]:hover:not(:disabled) { background:#ef5350; }
             button.ctrl-btn:disabled {
                 background:#cfd8dc !important;
                 color:#78909c;
