@@ -9,7 +9,7 @@ from agents.calibrator.agent import CalibratorAgent
 from agents.navigator.agent import NavigatorAgent
 from agents.camera_receiver.agent import CameraReceiverAgent
 from agents.navigator_request.agent import NavigationRequesterAgent
-from common.runner import start_agent
+from common.runner import start_agent_alphabot
 
 # Maps MODE value to the agent class
 AGENTS = {
@@ -25,7 +25,7 @@ async def main():
 
     active = []
     for _, a in AGENTS.items():
-        active.append(await start_agent(a))
+        active.append(await start_agent_alphabot(a))
 
     logger.info("Agents started successfully")
 
