@@ -2,12 +2,11 @@
 import json
 import os
 from aiohttp import web, WSMsgType
-from common.config import CALIBRATOR_JID
-from common.config import NAVIGATOR_JID
-from common.config import SENSORS_JID
+from common.config import *
 
 from dashboard.render.PageComponent import PageComponent
 from dashboard.render.AnalogGraphComponent import AnalogGraphComponent
+from dashboard.render.DigitalGraphComponent import DigitalGraphComponent
 from dashboard.render.BatteryGaugeComponent import BatteryGaugeComponent
 from dashboard.render.ControlButtonsComponent import ControlButtonsComponent
 from dashboard.render.ObstaclesComponent import ObstacleSensorsComponent
@@ -22,6 +21,11 @@ BUTTONS = [
     {"text": "Calibrate rotation", "target_jid": f"{CALIBRATOR_JID}", "command": "calibrate rotation"},
     {"text": "Calibrate distance", "target_jid": f"{CALIBRATOR_JID}", "command": "calibrate distance"},
 ]
+DIGITAL_GRAPH = [
+    {"label": "Left", "data_label": "digital_2"},
+    {"label": "Right", "data_label": "digital_1"}
+]
+
 
 class Dashboard:
     def __init__(self):
@@ -34,14 +38,18 @@ class Dashboard:
     def render_page(self):
         motor_left = MotorComponent("Left Moto", "motion_left_pwm", "motion_left_direction")
         motor_right = MotorComponent("Right Moto", "motion_right_pwm", "motion_right_direction")
+        buttons = ControlButtonsComponent(BUTTONS)
+        digitals = DigitalGraphComponent(DIGITAL_GRAPH)
         components = [
             PageComponent(),
             ObstacleSensorsComponent(),
             BatteryGaugeComponent(),
             motor_left,
             motor_right,
-            ControlButtonsComponent(BUTTONS),
+            buttons,
             AnalogGraphComponent(),
+            digitals
+
         ]
 
         css = "\n".join(c.render_css() for c in components)         # The css style of the component
@@ -55,8 +63,11 @@ class Dashboard:
                 motor_right.render_html(),
                 BatteryGaugeComponent().render_html(),
             )
-            + ControlButtonsComponent(BUTTONS).render_html()
-            + AnalogGraphComponent().render_html()
+            + buttons.render_html()
+            + row(
+                AnalogGraphComponent().render_html(),
+                digitals.render_html()
+            )
         )
         return f"""<html>
 <head>
@@ -153,6 +164,12 @@ ws.onmessage = (event) => {{
         data = agent.store.query_analog(minutes=15)
         return web.json_response(data)
 
+    async def _get_digital_data(self, request):
+        agent = request.app["agent"]
+        data = agent.store.query_digital(minutes=15)
+        return web.json_response(data)
+
+
     async def broadcast(self, sample):
         self.latest = sample
         for ws in list(self.websockets):
@@ -166,6 +183,7 @@ ws.onmessage = (event) => {{
         app.router.add_get("/", self._dashboard_page)
         app.router.add_get("/ws", self._ws_handler)
         app.router.add_get("/api/analog", self._get_analog_data)
+        app.router.add_get("/api/digital", self._get_digital_data)
 
         return app
 

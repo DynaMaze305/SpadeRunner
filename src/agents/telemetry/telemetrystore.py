@@ -71,3 +71,31 @@ class TelemetryStore:
 
         return data
 
+    # -------------------------
+    # Query digital data
+    # -------------------------
+    def query_digital(self, minutes=15):
+        since = time.time() - minutes * 60
+        cur = self.db.cursor()
+
+        cur.execute("""
+            SELECT ts, key, value
+            FROM telemetry
+            WHERE ts >= ?
+            AND key LIKE 'digital_%'
+            ORDER BY ts ASC
+        """, (since,))
+
+        rows = cur.fetchall()
+
+        data = {}
+        for ts, key, value in rows:
+            if key not in data:
+                data[key] = []
+
+            data[key].append({
+                "ts": int(ts * 1000),  # ms
+                "value": value
+            })
+
+        return data
