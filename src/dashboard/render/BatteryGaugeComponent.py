@@ -3,15 +3,23 @@ from dashboard.render.DashboardComponent import DashboardComponent
 class BatteryGaugeComponent(DashboardComponent):
     def render_html(self):
         return """
-        <h2>Battery</h2>
-        <div class="battery-box">
-            <div id="battery-level" class="battery-gaugue"></div>
+        <div class="battery-container">
+            <h2>Battery</h2>
+            <div class="battery-box">
+                <div id="battery-level" class="battery-gaugue"></div>
+            </div>
+            <div id="battery-text" class="battery-text">--%</div>
         </div>
-        <div id="battery-text" style="margin-top:5px;">--%</div>
         """
 
     def render_css(self):
         return """
+            .battery-container {
+                text-align: center;
+                width: 200px;
+                margin: auto;
+            }
+
             .battery-box {
                 width: 80%;
                 height: 40px;
@@ -19,6 +27,7 @@ class BatteryGaugeComponent(DashboardComponent):
                 border-radius: 5px;
                 position: relative;
                 background: #333;
+                margin: auto;
             }
 
             .battery-gaugue {
@@ -27,7 +36,11 @@ class BatteryGaugeComponent(DashboardComponent):
                 background: #00e676;
                 transition: width 0.3s;
             }
-            """
+
+            .battery-text {
+                margin-top: 5px;
+            }
+        """
 
     def render_js(self):
         return """
