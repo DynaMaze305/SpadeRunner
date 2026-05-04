@@ -42,13 +42,13 @@ class NavigatorConfig:
 
     obstacle_avoidance_margin_px: int = 1
     robot_clearance_margin_px: int = 0
-    obstacle_mini_grid_divisions: int = 3
+    obstacle_mini_grid_divisions: int = 5
     # Fraction of the computed distance actually sent to the robot per step.
     # 1.0 = full move, 0.5 = half move (vision re-localizes between halves), etc.
     move_distance_fraction: float = 1.0
 
     # Radius around the target cell center that still counts as "reached" (mm).
-    cell_reached_radius_mm: float = 15.0
+    cell_reached_radius_mm: float = 15.0 #hack
 
     # Pixel inset used to aim away from walls instead of the exact visual cell center.
     safe_cell_inset_px: int = 12

@@ -118,10 +118,10 @@ class MazeVisionPipeline:
         )
 
     # Fast path used after the maze has been analyzed once: only decodes the new
-    # image and re-crops it using the cached crop_bbox. Walls, grid lines and the
-    # walls dict are reused from `cached` since the maze itself is static for the
-    # session. Callers should validate grid size on the full-pipeline output and
-    # only pass a successful frame in here.
+    # image and re-crops it using the cached crop_bbox. Walls, grid lines, the
+    # walls dict, and the obstacle map are reused from `cached` since the maze
+    # itself is static for the session. Callers should validate grid size on the
+    # full-pipeline output and only pass a successful frame in here.
     def analyze_with_cached_maze(
         self,
         image_bytes: bytes | None,
@@ -141,10 +141,6 @@ class MazeVisionPipeline:
         # New maze dict: refreshed `cropped` slice, every other field reused.
         maze = dict(cached.maze)
         maze["cropped"] = cropped
-        obstacle_mask, obstacles, robot_exclusions = detect_obstacles(
-            cropped,
-            aruco_detector=self.aruco,
-        )
 
         return VisionFrame(
             image=image,
@@ -156,7 +152,7 @@ class MazeVisionPipeline:
             n_rows=cached.n_rows,
             n_cols=cached.n_cols,
             grid_walls=cached.grid_walls,
-            obstacle_mask=obstacle_mask,
-            obstacles=obstacles,
-            obstacle_robot_exclusions=robot_exclusions,
+            obstacle_mask=cached.obstacle_mask,
+            obstacles=cached.obstacles,
+            obstacle_robot_exclusions=cached.obstacle_robot_exclusions,
         )

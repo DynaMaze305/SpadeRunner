@@ -72,7 +72,7 @@ class NavigatorDebug:
         robot_margin_px: int = 0,
         safe_cell_inset_px: int = 0,
         safe_cell_inset_start_factor: float = 0.45,
-        mini_grid_divisions: int = 9,
+        mini_grid_divisions: int = 5,
         camera: Camera | None = None,
     ) -> None:
         self.run_dir = run_dir
@@ -552,10 +552,22 @@ class NavigatorDebug:
             y_bottom,
             frame,
         )
+        row_col = self._label_rc(label)
+        walls = frame.grid_walls.get(label, {})
+        if row_col is not None:
+            row, col = row_col
+            if (
+                (col == 0 and walls.get("left"))
+                or (col == len(frame.x_lines) - 2 and walls.get("right"))
+                or (row == 0 and walls.get("bottom"))
+                or (row == len(frame.y_lines) - 2 and walls.get("top"))
+            ):
+                cell_limit = max(0, min(x_right - x_left, y_bottom - y_top) // 3)
+                inset = min(max(inset, self.safe_cell_inset_px), cell_limit)
+
         if inset == 0:
             return (cx, cy)
 
-        walls = frame.grid_walls.get(label, {})
         if walls.get("left"):
             cx += inset
         if walls.get("right"):
@@ -604,6 +616,19 @@ class NavigatorDebug:
         ramp = (edge_factor - start) / (1.0 - start)
         cell_limit = max(0, min(x_right - x_left, y_bottom - y_top) // 3)
         return min(int(round(max_inset * ramp)), cell_limit)
+
+    @staticmethod
+    def _label_rc(label: str | None) -> tuple[int, int] | None:
+        if not label or len(label) < 2:
+            return None
+        try:
+            col = int(label[1:]) - 1
+        except ValueError:
+            return None
+        row = ord(label[0].upper()) - ord("A")
+        if row < 0 or col < 0:
+            return None
+        return (row, col)
 
     @staticmethod
     def _cell_bounds(

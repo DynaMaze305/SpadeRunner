@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
+import heapq
 import string
 
 
@@ -78,7 +79,12 @@ class MiniGridPlanner:
 
         start = (start_cell, start_mini[0], start_mini[1])
         goal = (goal_cell, goal_mini[0], goal_mini[1])
-        blocked = self._blocked_nodes(bounds_by_cell, frame.obstacles)
+        blocked = self._blocked_nodes(bounds_by_cell, frame.obstacles, frame=frame)
+
+        if start in blocked:
+            start = self._nearest_unblocked_node(start, blocked, cell_set, frame)
+            if start is None:
+                return None
 
         node_path = self._shortest_node_path(start, goal, blocked, cell_set, frame)
         if node_path is None:
@@ -142,19 +148,41 @@ class MiniGridPlanner:
         if start in blocked or goal in blocked:
             return None
 
-        queue = deque([start])
+        clearance_distances = self._mini_clearance_distances(blocked)
+        queue: list[tuple[int, int, int, MiniCell]] = [(-10**9, 0, 0, start)]
+        sequence = 1
         previous: dict[MiniCell, MiniCell | None] = {start: None}
+        best_score: dict[MiniCell, tuple[int, int]] = {start: (10**9, 0)}
 
         while queue:
-            current = queue.popleft()
+            negative_clearance, cost, _, current = heapq.heappop(queue)
+            clearance = -negative_clearance
+            if (clearance, cost) != best_score[current]:
+                continue
             if current == goal:
                 break
 
             for neighbor in self._neighbors(current):
-                if neighbor in blocked or neighbor in previous:
+                if neighbor in blocked:
                     continue
+                next_clearance = min(
+                    clearance,
+                    clearance_distances.get(neighbor, self.divisions + 1),
+                )
+                next_cost = cost + 1 + self._preferred_row_penalty(neighbor[0])
+                best_clearance, best_cost = best_score.get(neighbor, (-1, 10**9))
+                if (
+                    next_clearance < best_clearance
+                    or (
+                        next_clearance == best_clearance
+                        and next_cost >= best_cost
+                    )
+                ):
+                    continue
+                best_score[neighbor] = (next_clearance, next_cost)
                 previous[neighbor] = current
-                queue.append(neighbor)
+                heapq.heappush(queue, (-next_clearance, next_cost, sequence, neighbor))
+                sequence += 1
 
         if goal not in previous:
             return None
@@ -166,6 +194,29 @@ class MiniGridPlanner:
             current = previous[current]
         path.reverse()
         return path
+
+    def _nearest_unblocked_node(
+        self,
+        start: Node,
+        blocked: set[Node],
+        allowed_cells: set[str],
+        frame,
+    ) -> Node | None:
+        queue = deque([start])
+        seen = {start}
+
+        while queue:
+            current = queue.popleft()
+            if current not in blocked:
+                return current
+
+            for neighbor in self._node_neighbors(current, allowed_cells, frame, blocked=set()):
+                if neighbor in seen:
+                    continue
+                seen.add(neighbor)
+                queue.append(neighbor)
+
+        return None
 
     def _neighbors(self, cell: MiniCell) -> list[MiniCell]:
         row, col = cell
@@ -181,6 +232,7 @@ class MiniGridPlanner:
         self,
         bounds_by_cell: dict[str, Box],
         obstacles: list[Box],
+        frame=None,
     ) -> set[Node]:
         blocked: set[Node] = set()
         for cell, bounds in bounds_by_cell.items():
@@ -199,19 +251,41 @@ class MiniGridPlanner:
         if start in blocked or goal in blocked:
             return None
 
-        queue = deque([start])
+        clearance_distances = self._node_clearance_distances(allowed_cells, blocked)
+        queue: list[tuple[int, int, int, Node]] = [(-10**9, 0, 0, start)]
+        sequence = 1
         previous: dict[Node, Node | None] = {start: None}
+        best_score: dict[Node, tuple[int, int]] = {start: (10**9, 0)}
 
         while queue:
-            current = queue.popleft()
+            negative_clearance, cost, _, current = heapq.heappop(queue)
+            clearance = -negative_clearance
+            if (clearance, cost) != best_score[current]:
+                continue
             if current == goal:
                 break
 
-            for neighbor in self._node_neighbors(current, allowed_cells, frame):
-                if neighbor in blocked or neighbor in previous:
+            for neighbor in self._node_neighbors(current, allowed_cells, frame, blocked):
+                if neighbor in blocked:
                     continue
+                next_clearance = min(
+                    clearance,
+                    clearance_distances.get(neighbor, self.divisions + 1),
+                )
+                next_cost = cost + 1 + self._preferred_row_penalty(neighbor[1])
+                best_clearance, best_cost = best_score.get(neighbor, (-1, 10**9))
+                if (
+                    next_clearance < best_clearance
+                    or (
+                        next_clearance == best_clearance
+                        and next_cost >= best_cost
+                    )
+                ):
+                    continue
+                best_score[neighbor] = (next_clearance, next_cost)
                 previous[neighbor] = current
-                queue.append(neighbor)
+                heapq.heappush(queue, (-next_clearance, next_cost, sequence, neighbor))
+                sequence += 1
 
         if goal not in previous:
             return None
@@ -229,14 +303,85 @@ class MiniGridPlanner:
         node: Node,
         allowed_cells: set[str],
         frame,
+        blocked: set[Node],
     ) -> list[Node]:
         cell, row, col = node
         neighbors = []
-        for dr, dc in ((0, 1), (1, 0), (0, -1), (-1, 0)):
+        for dr, dc in (
+            (0, 1), (1, 0), (0, -1), (-1, 0),
+            (1, 1), (1, -1), (-1, -1), (-1, 1),
+        ):
+            if dr != 0 and dc != 0:
+                side_a = self._step_node(cell, row, col, dr, 0, allowed_cells, frame)
+                side_b = self._step_node(cell, row, col, 0, dc, allowed_cells, frame)
+                if side_a is None or side_b is None:
+                    continue
+                if side_a in blocked or side_b in blocked:
+                    continue
+
             next_node = self._step_node(cell, row, col, dr, dc, allowed_cells, frame)
             if next_node is not None:
                 neighbors.append(next_node)
         return neighbors
+
+    def _preferred_row_penalty(self, row: int) -> int:
+        preferred_rows = {row_number - 1 for row_number in (2, 3, 4)}
+        if row in preferred_rows:
+            return 0
+        return 100
+
+    def _mini_clearance_distances(
+        self,
+        blocked: set[MiniCell],
+    ) -> dict[MiniCell, int]:
+        distances: dict[MiniCell, int] = {}
+        if not blocked:
+            return distances
+
+        for row in range(self.divisions):
+            for col in range(self.divisions):
+                cell = (row, col)
+                if cell in blocked:
+                    continue
+                distances[cell] = min(
+                    max(abs(row - blocked_row), abs(col - blocked_col))
+                    for blocked_row, blocked_col in blocked
+                )
+        return distances
+
+    def _node_clearance_distances(
+        self,
+        allowed_cells: set[str],
+        blocked: set[Node],
+    ) -> dict[Node, int]:
+        distances: dict[Node, int] = {}
+        if not blocked:
+            return distances
+
+        blocked_coords = [
+            self._global_mini_rc(cell, row, col)
+            for cell, row, col in blocked
+        ]
+
+        for cell in allowed_cells:
+            for row in range(self.divisions):
+                for col in range(self.divisions):
+                    node = (cell, row, col)
+                    if node in blocked:
+                        continue
+                    global_row, global_col = self._global_mini_rc(cell, row, col)
+                    distances[node] = min(
+                        max(abs(global_row - blocked_row), abs(global_col - blocked_col))
+                        for blocked_row, blocked_col in blocked_coords
+                    )
+        return distances
+
+    def _global_mini_rc(self, cell: str, row: int, col: int) -> tuple[int, int]:
+        parent_row, parent_col = self._cell_rc(cell) or (0, 0)
+        return (
+            parent_row * self.divisions + row,
+            parent_col * self.divisions + col,
+        )
 
     def _step_node(
         self,
@@ -296,15 +441,14 @@ class MiniGridPlanner:
             return False
 
         walls = frame.grid_walls.get(from_cell, {})
-        next_walls = frame.grid_walls.get(to_cell, {})
         if dc > 0:
-            return not walls.get("right", True) and not next_walls.get("left", True)
+            return not walls.get("right", True)
         if dc < 0:
-            return not walls.get("left", True) and not next_walls.get("right", True)
+            return not walls.get("left", True)
         if dr > 0:
-            return not walls.get("top", True) and not next_walls.get("bottom", True)
+            return not walls.get("top", True)
         if dr < 0:
-            return not walls.get("bottom", True) and not next_walls.get("top", True)
+            return not walls.get("bottom", True)
         return False
 
     def _entry_mini_cell(

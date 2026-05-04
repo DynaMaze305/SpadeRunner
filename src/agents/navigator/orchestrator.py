@@ -144,6 +144,9 @@ class NavigationOrchestrator:
                     f"[CACHE] locked maze structure: {frame.n_rows}x{frame.n_cols}, "
                     f"crop={frame.maze['crop_bbox']}"
                 )
+                logger.info(
+                    f"[CACHE] locked obstacle map: {len(frame.obstacles)} obstacles"
+                )
 
             robot = self.localizer.locate(frame)
 
@@ -248,8 +251,8 @@ class NavigationOrchestrator:
                     message="no valid mini-grid path",
                 )
 
-            waypoint = self._next_point_waypoint(robot_local_pos, point_path)
-            if waypoint is None:
+            waypoint_info = self._next_point_waypoint(robot_local_pos, point_path)
+            if waypoint_info is None:
                 logger.info("[SUCCESS] Reached mini-grid target")
                 self._save_debug(
                     step,
@@ -266,6 +269,14 @@ class NavigationOrchestrator:
                     message="reached target",
                 )
 
+            waypoint, snapped_current_node, snapped_distance_px = waypoint_info
+            logger.info(
+                f"[NAV] robot_center_full={robot.center} "
+                f"robot_center_local={robot_local_pos} "
+                f"snapped_current_node={snapped_current_node} "
+                f"snapped_distance_px={snapped_distance_px:.1f} "
+                f"selected_next_waypoint={waypoint}"
+            )
             logger.info(f"[PATH] mini-grid length: {len(point_path)}")
             logger.info(f"[STEP] next mini waypoint: {waypoint}")
             commands = self.converter.points_to_commands(
@@ -273,6 +284,7 @@ class NavigationOrchestrator:
                 start_angle=current_angle,
             )
             self._inject_point_move_distances(commands)
+            self._log_move_command(commands)
 
             logger.info(f"[COMMANDS] {commands}")
 
@@ -438,12 +450,38 @@ class NavigationOrchestrator:
     def _next_point_waypoint(
         robot_local_pos: tuple[int, int],
         point_path: list[tuple[int, int]],
-        reached_px: float = 2.0,
-    ) -> tuple[int, int] | None:
-        for point in point_path:
-            if math.dist(robot_local_pos, point) > reached_px:
-                return point
+        reached_px: float = 5.0,
+    ) -> tuple[tuple[int, int], tuple[int, int], float] | None:
+        if not point_path:
+            return None
+
+        # The point path is rebuilt from the detected robot center on every
+        # frame, so its first point is the current snapped mini-grid node. Using
+        # the closest point anywhere in the path can skip ahead when the robot is
+        # inside a blocked cell and physically near a later mini-route segment.
+        snapped_current_node = point_path[0]
+        snapped_distance_px = math.dist(robot_local_pos, snapped_current_node)
+
+        for next_index in range(1, len(point_path)):
+            waypoint = point_path[next_index]
+            if math.dist(robot_local_pos, waypoint) > reached_px:
+                return (waypoint, snapped_current_node, snapped_distance_px)
+
+        if snapped_distance_px > reached_px:
+            return (snapped_current_node, snapped_current_node, snapped_distance_px)
+
         return None
+
+    @staticmethod
+    def _log_move_command(commands: list[dict]) -> None:
+        for cmd in commands:
+            if cmd.get("action") == "move":
+                logger.info(
+                    f"[NAV] final_move_command from={cmd.get('from')} "
+                    f"to={cmd.get('to')} distance_px={cmd.get('distance_px')} "
+                    f"distance_mm={cmd.get('distance_mm')}"
+                )
+                return
 
     @staticmethod
     def _cell_rc(label: str | None) -> tuple[int, int] | None:
@@ -504,10 +542,19 @@ class NavigationOrchestrator:
             y_bottom,
             frame,
         )
+        walls = frame.grid_walls.get(label, {})
+        if (
+            (col == 0 and walls.get("left"))
+            or (col == len(frame.x_lines) - 2 and walls.get("right"))
+            or (row == 0 and walls.get("bottom"))
+            or (row == len(frame.y_lines) - 2 and walls.get("top"))
+        ):
+            cell_limit = max(0, min(x_right - x_left, y_bottom - y_top) // 3)
+            inset = min(max(inset, self.config.safe_cell_inset_px), cell_limit)
+
         if inset == 0:
             return (cx, cy)
 
-        walls = frame.grid_walls.get(label, {})
         if walls.get("left"):
             cx += inset
         if walls.get("right"):

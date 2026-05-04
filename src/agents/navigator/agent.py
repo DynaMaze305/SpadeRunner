@@ -74,7 +74,9 @@ class NavigatorAgent(agent.Agent):
                     divisions=cfg.obstacle_mini_grid_divisions,
                     obstacle_margin_px=cfg.obstacle_avoidance_margin_px,
                     robot_margin_px=cfg.robot_clearance_margin_px,
-                )
+                ),
+                safe_cell_inset_px=cfg.safe_cell_inset_px,
+                safe_cell_inset_start_factor=cfg.safe_cell_inset_start_factor,
             )
             converter = PathCommandConverter()
             executor = PathMotionExecutor(
