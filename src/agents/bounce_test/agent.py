@@ -79,27 +79,15 @@ class BounceTestAgent(agent.Agent):
 
                     # bot may send 'emergency_stop <0|1>' between chunks: 0 -> turn left, 1 -> turn right
                     if await self._handle_emergency_maneuvers():
+                        consecutive_emergencies += 1
+                        if consecutive_emergencies > MAX_CONSECUTIVE_EMERGENCIES:
+                            logger.error("stuck after rotation maneuvers, ending test")
+                            return
+                        # rotation cleared the wall, drop the latch flag for next chunk
+                        self.motion.last_emergency = False
                         continue
 
-                    # emergency tripped -> back up, count, bail if stuck
-                    if self.motion.last_emergency:
-                        consecutive_emergencies += 1
-                        logger.warning(
-                            f"[EMERGENCY] tripped, consecutive={consecutive_emergencies}, "
-                            f"recovering with {EMERGENCY_RECOVERY_MM}mm backward override"
-                        )
-                        if consecutive_emergencies > MAX_CONSECUTIVE_EMERGENCIES:
-                            logger.error("stuck after recoveries, ending test")
-                            return
-                        await self.motion.command_move(
-                            distance=EMERGENCY_RECOVERY_MM,
-                            pwm=EMERGENCY_RECOVERY_PWM,
-                            ratio=FORWARD_RATIO,
-                            override=True,
-                        )
-                        self.motion.last_emergency = False
-                    else:
-                        consecutive_emergencies = 0
+                    consecutive_emergencies = 0
 
                 logger.info(f"completed {MAX_CHUNKS} chunks")
             finally:
