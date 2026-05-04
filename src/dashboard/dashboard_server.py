@@ -11,6 +11,7 @@ from dashboard.render.AnalogGraphComponent import AnalogGraphComponent
 from dashboard.render.BatteryGaugeComponent import BatteryGaugeComponent
 from dashboard.render.ControlButtonsComponent import ControlButtonsComponent
 from dashboard.render.ObstaclesComponent import ObstacleSensorsComponent
+from dashboard.render.MotorComponent import MotorComponent
 
 
 XMPP_DOMAIN = os.environ.get("XMPP_DOMAIN", "prosody")
@@ -31,10 +32,14 @@ class Dashboard:
     #  HTML RENDERING FUNCTIONS
     # ---------------------------------------------------------
     def render_page(self):
+        motor_left = MotorComponent("Left Moto", "motion_left_pwm", "motion_left_direction")
+        motor_right = MotorComponent("Right Moto", "motion_right_pwm", "motion_right_direction")
         components = [
             PageComponent(),
             ObstacleSensorsComponent(),
             BatteryGaugeComponent(),
+            motor_left,
+            motor_right,
             ControlButtonsComponent(BUTTONS),
             AnalogGraphComponent(),
         ]
@@ -49,6 +54,10 @@ class Dashboard:
                 BatteryGaugeComponent().render_html()
             )
             + ControlButtonsComponent(BUTTONS).render_html()
+            + row(
+                motor_left.render_html(),
+                motor_right.render_html()
+            )
             + AnalogGraphComponent().render_html()
         )
         return f"""<html>
@@ -97,6 +106,7 @@ ws.onmessage = (event) => {{
         case "data":
             const ts = msg.ts;
             const data = msg.values;
+            // console.log(data)
 
             document.getElementById("ts").innerText = "Timestamp: " + new Date(ts * 1000).toLocaleTimeString();
 
@@ -170,3 +180,4 @@ def row(*components_html):
         + "".join(f'<div style="flex:1;">{html}</div>' for html in components_html)
         + "</div>"
     )
+

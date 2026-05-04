@@ -21,7 +21,7 @@ HTTP_PORT = 8080
 
 class TelemetryAgent(agent.Agent):
     ENV_PREFIX = "TELEMETRY"
-    def __init__(self, jid, password, test=False):
+    def __init__(self, jid, password, test=True):
         super().__init__(jid, password)
         self.test = test
         self.selected_bot = None
@@ -33,7 +33,7 @@ class TelemetryAgent(agent.Agent):
     class FakeTelemetry(behaviour.PeriodicBehaviour):
         async def run(self):
             # Generate fake sensor values
-            data = {"sensors":{"digital":{},"analog":{}}, "motion": {}}
+            data = {"digital":{},"analog":{}, "motion": {}}
             data["digital"][1] = random.randint(0, 1)
             data["digital"][2] = random.randint(0, 1)
 
@@ -41,9 +41,11 @@ class TelemetryAgent(agent.Agent):
                 data["analog"][k] = random.random()
 
             data["battery"] = random.random() * 100
-            data["motion"]["speed"] = random.random()
-            data["motion"]["direction"] = random.random()
-            data["motion"]["rotation"] = random.random()
+            data["motion"]["left_pwm"] = random.random() * 100
+            data["motion"]["left_direction"] = ["stopped","forward","backward","unknown"][random.randint(0,3)]
+            data["motion"]["right_pwm"] = random.random() * 100
+            data["motion"]["right_direction"] = ["stopped","forward","backward","unknown"][random.randint(0,3)]
+            data["motion"]["emergency_stop"] = random.randint(0, 1)
 
             # Build telemetry payload (same as real bots)
             payload = {
@@ -120,34 +122,38 @@ class TelemetryAgent(agent.Agent):
     # ---------- helpers ----------
     def _payload_to_samples(self, payload: dict) -> dict:
         """
-        Convert a raw telemetry payload into SQL rows.
-        Returns a list of tuples: (ts, bot, key, value)
+        Convert a raw telemetry payload into a flattened sample
+        suitable for both SQL storage and dashboard broadcast.
         """
         ts = payload["ts"]
         bot = payload["bot"]
         data = payload["data"]
 
-        rows = {}
+        flat = {}
 
         # --- Digital sensors ---
-        for k, v in data["digital"].items():
-            rows[f"digital_{k}"] = v
+        if "digital" in data:
+            for k, v in data["digital"].items():
+                flat[f"digital_{k}"] = v
 
         # --- Analog sensors ---
-        for k, v in data["analog"].items():
-            rows[f"analog_{k}"] = v
+        if "analog" in data:
+            for k, v in data["analog"].items():
+                flat[f"analog_{k}"] = v
 
         # --- Battery ---
-        rows["battery"] = data["battery"]
+        if "battery" in data:
+            flat["battery"] = data["battery"]
 
         # --- Motion ---
-        # for k, v in data["motion"].items():
-        #     rows[f"motion_{k}"] = v
+        if "motion" in data:
+            for k, v in data["motion"].items():
+                flat[f"motion_{k}"] = v
 
         return {
             "ts": ts,
             "bot": bot,
-            "values": rows
+            "values": flat
         }
 
     def _store_sample(self, sample: dict):

@@ -35,8 +35,11 @@ class BatteryGaugeComponent(DashboardComponent):
                 const level = document.getElementById("battery-level");
                 const text = document.getElementById("battery-text");
 
-                level.style.width = percent + "%";
-                text.innerText = percent + "%";
+                // Limit number to 2 digits
+                const percent_display = Math.round(percent).toString().slice(0, 2);
+
+                level.style.width = percent_display + "%";
+                text.innerText = percent_display + "%";
 
                 if (percent > 50) {
                     level.style.background = "#00e676"; // green
