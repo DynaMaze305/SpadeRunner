@@ -115,7 +115,7 @@ class TelemetryAgent(agent.Agent):
             logger.warning(f"[AGENT] Unknown message type: {msg_type}")
 
     class XMPPSendMessage(behaviour.OneShotBehaviour):
-        def __init__(self, cmd: str, target: str, extra_metadata: dict | None = None):
+        def __init__(self, cmd: str, target: str, extra_metadata=None):
             super().__init__()
             self.cmd = cmd
             self.target = target
