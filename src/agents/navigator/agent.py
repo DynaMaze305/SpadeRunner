@@ -83,6 +83,11 @@ class NavigatorAgent(agent.Agent):
                 run_dir=run_dir,
                 grid_detector=vision.grid,
                 localizer=localizer.localizer,
+                obstacle_margin_px=cfg.obstacle_avoidance_margin_px,
+                robot_margin_px=cfg.robot_clearance_margin_px,
+                contour_padding_px=cfg.contour_demo_padding_px,
+                safe_cell_inset_px=cfg.safe_cell_inset_px,
+                safe_cell_inset_start_factor=cfg.safe_cell_inset_start_factor,
             )
 
             orch = NavigationOrchestrator(

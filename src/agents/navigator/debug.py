@@ -70,6 +70,8 @@ class NavigatorDebug:
         obstacle_margin_px: int = 0,
         robot_margin_px: int = 0,
         contour_padding_px: int = 0,
+        safe_cell_inset_px: int = 0,
+        safe_cell_inset_start_factor: float = 0.45,
         camera: Camera | None = None,
     ) -> None:
         self.run_dir = run_dir
@@ -78,6 +80,8 @@ class NavigatorDebug:
         self.obstacle_margin_px = obstacle_margin_px
         self.robot_margin_px = robot_margin_px
         self.contour_padding_px = contour_padding_px
+        self.safe_cell_inset_px = safe_cell_inset_px
+        self.safe_cell_inset_start_factor = safe_cell_inset_start_factor
         self.camera = camera or Camera()
         os.makedirs(run_dir, exist_ok=True)
 
@@ -243,7 +247,7 @@ class NavigatorDebug:
 
         if contour_path and len(contour_path) >= 2:
             planned_waypoints = self._path_waypoints(
-                path, local_center, frame.x_lines, frame.y_lines,
+                path, local_center, frame,
             )
             for a, b in zip(planned_waypoints[:-1], planned_waypoints[1:]):
                 cv2.line(canvas, a, b, PLANNED_PATH_FAINT_COLOR, 2)
@@ -265,7 +269,7 @@ class NavigatorDebug:
             )
         elif path and len(path) >= 2:
             waypoints = self._path_waypoints(
-                path, local_center, frame.x_lines, frame.y_lines,
+                path, local_center, frame,
             )
 
             for a, b in zip(waypoints[:-1], waypoints[1:]):
@@ -289,9 +293,7 @@ class NavigatorDebug:
             # plus info text covering current/target/rotation/distance.
             if path and len(path) >= 2:
                 next_cell = path[1]
-                next_center = self._cell_center(
-                    next_cell, frame.x_lines, frame.y_lines,
-                )
+                next_center = self._safe_cell_center(next_cell, frame)
                 if next_center is not None:
                     dx = next_center[0] - local_center[0]
                     dy = next_center[1] - local_center[1]
@@ -336,8 +338,7 @@ class NavigatorDebug:
         self,
         path: list[str] | None,
         local_center: tuple[int, int] | None,
-        x_lines: list[int],
-        y_lines: list[int],
+        frame,
     ) -> list[tuple[int, int]]:
         if not path:
             return []
@@ -350,7 +351,7 @@ class NavigatorDebug:
             cells_to_visit = path
 
         for cell in cells_to_visit:
-            center = self._cell_center(cell, x_lines, y_lines)
+            center = self._safe_cell_center(cell, frame)
             if center is not None:
                 waypoints.append(center)
 
@@ -473,6 +474,77 @@ class NavigatorDebug:
         cx = (x_lines[col] + x_lines[col + 1]) // 2
         cy = (y_lines[r] + y_lines[r + 1]) // 2
         return (cx, cy)
+
+    def _safe_cell_center(self, label: str, frame) -> tuple[int, int] | None:
+        bounds = self._cell_bounds(label, frame.x_lines, frame.y_lines)
+        if bounds is None:
+            return None
+
+        x_left, y_top, x_right, y_bottom = bounds
+        cx = (x_left + x_right) // 2
+        cy = (y_top + y_bottom) // 2
+
+        inset = self._dynamic_safe_cell_inset(
+            cx,
+            cy,
+            x_left,
+            y_top,
+            x_right,
+            y_bottom,
+            frame,
+        )
+        if inset == 0:
+            return (cx, cy)
+
+        walls = frame.grid_walls.get(label, {})
+        if walls.get("left"):
+            cx += inset
+        if walls.get("right"):
+            cx -= inset
+        # MazeGridAnalyzer uses "bottom" for the image-top cell edge and
+        # "top" for the image-bottom cell edge.
+        if walls.get("bottom"):
+            cy += inset
+        if walls.get("top"):
+            cy -= inset
+
+        return (
+            min(max(cx, x_left + inset), x_right - inset),
+            min(max(cy, y_top + inset), y_bottom - inset),
+        )
+
+    def _dynamic_safe_cell_inset(
+        self,
+        cx: int,
+        cy: int,
+        x_left: int,
+        y_top: int,
+        x_right: int,
+        y_bottom: int,
+        frame,
+    ) -> int:
+        max_inset = max(0, self.safe_cell_inset_px)
+        if max_inset == 0:
+            return 0
+
+        maze_x1 = frame.x_lines[0]
+        maze_x2 = frame.x_lines[-1]
+        maze_y1 = frame.y_lines[0]
+        maze_y2 = frame.y_lines[-1]
+        maze_cx = (maze_x1 + maze_x2) / 2.0
+        maze_cy = (maze_y1 + maze_y2) / 2.0
+        max_dist = math.hypot(maze_x2 - maze_cx, maze_y2 - maze_cy)
+        if max_dist <= 0:
+            return 0
+
+        edge_factor = math.hypot(cx - maze_cx, cy - maze_cy) / max_dist
+        start = min(max(self.safe_cell_inset_start_factor, 0.0), 0.99)
+        if edge_factor <= start:
+            return 0
+
+        ramp = (edge_factor - start) / (1.0 - start)
+        cell_limit = max(0, min(x_right - x_left, y_bottom - y_top) // 3)
+        return min(int(round(max_inset * ramp)), cell_limit)
 
     @staticmethod
     def _cell_bounds(

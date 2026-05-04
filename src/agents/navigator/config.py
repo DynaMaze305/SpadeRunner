@@ -10,7 +10,7 @@ from common.config import ARUCO_ANGLE_OFFSET
 # Tests construct a NavigatorConfig directly; production reads env via from_env().
 @dataclass(frozen=True)
 class NavigatorConfig:
-    target_cell: str = "C1"
+    target_cell: str = "C11"
     max_steps: int = 50
     max_bad_grid_retries: int = 5
 
@@ -52,6 +52,9 @@ class NavigatorConfig:
     # Radius around the target cell center that still counts as "reached" (mm).
     cell_reached_radius_mm: float = 15.0
 
+    # Pixel inset used to aim away from walls instead of the exact visual cell center.
+    safe_cell_inset_px: int = 12
+    safe_cell_inset_start_factor: float = 0.45
     @classmethod
     def from_env(cls) -> "NavigatorConfig":
         return cls(
@@ -133,6 +136,18 @@ class NavigatorConfig:
                 os.getenv(
                     "NAVIGATOR_CELL_REACHED_RADIUS_MM",
                     str(cls.cell_reached_radius_mm),
+                )
+            ),
+            safe_cell_inset_px=int(
+                os.getenv(
+                    "NAVIGATOR_SAFE_CELL_INSET_PX",
+                    str(cls.safe_cell_inset_px),
+                )
+            ),
+            safe_cell_inset_start_factor=float(
+                os.getenv(
+                    "NAVIGATOR_SAFE_CELL_INSET_START_FACTOR",
+                    str(cls.safe_cell_inset_start_factor),
                 )
             ),
         )
