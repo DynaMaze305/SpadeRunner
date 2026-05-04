@@ -21,7 +21,7 @@ HTTP_PORT = 8080
 
 class TelemetryAgent(agent.Agent):
     ENV_PREFIX = "TELEMETRY"
-    def __init__(self, jid, password, test=True):
+    def __init__(self, jid, password, test=False):
         super().__init__(jid, password)
         self.test = test
         self.selected_bot = None
@@ -103,6 +103,7 @@ class TelemetryAgent(agent.Agent):
                 return
 
             logger.warning(f"[AGENT] Unknown message type: {msg_type}")
+            logger.warning(f"[AGENT] {msg}")
 
     class XMPPSendMessage(behaviour.OneShotBehaviour):
         def __init__(self, cmd: str, target: str):
