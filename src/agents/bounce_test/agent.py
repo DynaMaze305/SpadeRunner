@@ -1,9 +1,8 @@
-"""bounce test agent: drives forward forever, recovers like the navigator
-when the bot trips emergency. used to validate the soft-bounce + hard-emergency
-behaviour without the full navigation pipeline.
+"""bounce test agent: drives forward in chunks, recovers like the navigator
+when the bot trips emergency. listens for 'start bounce' and runs the loop.
+used to validate soft-bounce + hard-emergency without the full nav pipeline.
 """
 
-import asyncio
 import logging
 
 from spade import agent, behaviour
@@ -26,47 +25,62 @@ EMERGENCY_RECOVERY_MM = -30
 EMERGENCY_RECOVERY_PWM = 10
 MAX_CONSECUTIVE_EMERGENCIES = 2
 
+# safety cap so an idle 'start bounce' doesn't run literally forever
+MAX_CHUNKS = 100
+
 
 class BounceTestAgent(agent.Agent):
     ENV_PREFIX = "BOUNCE_TEST"
 
-    class DriveBehaviour(behaviour.CyclicBehaviour):
+    class BounceBehaviour(behaviour.CyclicBehaviour):
 
         async def on_start(self):
             self.motion = MotionClient(self, jid=ROBOT_JID)
-            self.consecutive_emergencies = 0
-            logger.info("[BOUNCE] starting forward loop")
+            logger.info("bounce test ready, waiting for 'start bounce' command")
 
         async def run(self):
-            # one chunk forward
-            await self.motion.command_move(
-                distance=FORWARD_CHUNK_MM,
-                pwm=FORWARD_PWM,
-                ratio=FORWARD_RATIO,
-            )
-
-            # emergency tripped -> back up, count, bail if stuck
-            if self.motion.last_emergency:
-                self.consecutive_emergencies += 1
-                logger.warning(
-                    f"[EMERGENCY] tripped, consecutive={self.consecutive_emergencies}, "
-                    f"recovering with {EMERGENCY_RECOVERY_MM}mm backward override"
-                )
-                if self.consecutive_emergencies > MAX_CONSECUTIVE_EMERGENCIES:
-                    logger.error("[BOUNCE] stuck after recoveries, stopping the test")
-                    self.kill(exit_code="stuck")
-                    return
-                await self.motion.command_move(
-                    distance=EMERGENCY_RECOVERY_MM,
-                    pwm=EMERGENCY_RECOVERY_PWM,
-                    ratio=FORWARD_RATIO,
-                    override=True,
-                )
-                self.motion.last_emergency = False
+            request = await self.receive(timeout=10)
+            if request is None:
                 return
 
-            self.consecutive_emergencies = 0
+            body = (request.body or "").strip()
+            if body != "start bounce":
+                logger.warning(f"unknown command from {request.sender}: '{body}'")
+                return
+
+            logger.info(f"starting forward loop (up to {MAX_CHUNKS} chunks)")
+            consecutive_emergencies = 0
+
+            for i in range(MAX_CHUNKS):
+                # one chunk forward
+                await self.motion.command_move(
+                    distance=FORWARD_CHUNK_MM,
+                    pwm=FORWARD_PWM,
+                    ratio=FORWARD_RATIO,
+                )
+
+                # emergency tripped -> back up, count, bail if stuck
+                if self.motion.last_emergency:
+                    consecutive_emergencies += 1
+                    logger.warning(
+                        f"[EMERGENCY] tripped, consecutive={consecutive_emergencies}, "
+                        f"recovering with {EMERGENCY_RECOVERY_MM}mm backward override"
+                    )
+                    if consecutive_emergencies > MAX_CONSECUTIVE_EMERGENCIES:
+                        logger.error("stuck after recoveries, ending test")
+                        return
+                    await self.motion.command_move(
+                        distance=EMERGENCY_RECOVERY_MM,
+                        pwm=EMERGENCY_RECOVERY_PWM,
+                        ratio=FORWARD_RATIO,
+                        override=True,
+                    )
+                    self.motion.last_emergency = False
+                else:
+                    consecutive_emergencies = 0
+
+            logger.info(f"completed {MAX_CHUNKS} chunks")
 
     async def setup(self):
         logger.info("[INIT] BounceTestAgent ready")
-        self.add_behaviour(self.DriveBehaviour())
+        self.add_behaviour(self.BounceBehaviour())

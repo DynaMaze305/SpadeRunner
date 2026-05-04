@@ -34,10 +34,13 @@ from agents.navigator_request.agent import NavigationRequesterAgent
 from agents.telemetry.agent import TelemetryAgent
 from common.runner import run_agent, start_agent
 
-# Default: navigator + telemetry + calibrator all running, dashboard drives them.
-# MODE picks a test agent that takes the bot exclusively (skips the production triad).
+# Production set: dashboard buttons + scripts trigger work on demand.
+# bounce_test is here because it's a CyclicBehaviour that idles until
+# 'start bounce' arrives (via scripts/trigger_bounce.py), same shape as calibrator.
+PRODUCTION_AGENTS = (NavigatorAgent, TelemetryAgent, CalibratorAgent, BounceTestAgent)
+
+# MODE selects a one-off test agent that bypasses the production set.
 TEST_AGENTS = {
-    "bounce_test": BounceTestAgent,
     "camera_test": CameraReceiverAgent,
     "navigator_request": NavigationRequesterAgent,
 }
@@ -48,7 +51,6 @@ async def main():
 
     active = []
 
-    # test mode: run only the chosen test agent, no production triad
     if mode:
         if mode not in TEST_AGENTS:
             logger.error(f"Unknown MODE '{mode}', valid: {list(TEST_AGENTS.keys())} or empty")
@@ -58,8 +60,7 @@ async def main():
         if test_agent:
             active.append(test_agent)
     else:
-        # production triad — always all three, dashboard buttons trigger work on demand
-        for AgentClass in (NavigatorAgent, TelemetryAgent, CalibratorAgent):
+        for AgentClass in PRODUCTION_AGENTS:
             started = await start_agent(AgentClass)
             if started:
                 active.append(started)

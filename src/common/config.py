@@ -27,6 +27,7 @@ NAVIGATOR_JID = f"navigator@{COORDINATOR_HOST}"
 TELEMETRY_JID = f"telemetry@{COORDINATOR_HOST}"
 CAMERA_JID = f"camera_agent@{COORDINATOR_HOST}"
 CALIBRATOR_JID = f"calibrator@{COORDINATOR_HOST}"
+BOUNCE_TEST_JID = f"bounce_test@{COORDINATOR_HOST}"
 
 def agent_jid(user: str) -> str:
     return f"{user}@{COORDINATOR_HOST}"
