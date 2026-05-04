@@ -16,7 +16,7 @@ class BatteryGaugeComponent(DashboardComponent):
         return """
             .battery-container {
                 text-align: center;
-                width: 200px;
+                width: -moz-available;
                 margin: auto;
             }
 

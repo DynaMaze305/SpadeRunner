@@ -32,7 +32,7 @@ class MotorComponent(DashboardComponent):
     def render_css(self):
         return """
         .motor-box {
-            width: 220px;
+            width: -moz-available;
             padding: 10px;
             margin: 10px;
             background: #222;
