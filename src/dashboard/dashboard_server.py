@@ -50,14 +50,12 @@ class Dashboard:
 
         html_blocks = (
             row(
+                motor_left.render_html(),
                 ObstacleSensorsComponent().render_html(),
-                BatteryGaugeComponent().render_html()
+                motor_right.render_html(),
+                BatteryGaugeComponent().render_html(),
             )
             + ControlButtonsComponent(BUTTONS).render_html()
-            + row(
-                motor_left.render_html(),
-                motor_right.render_html()
-            )
             + AnalogGraphComponent().render_html()
         )
         return f"""<html>
