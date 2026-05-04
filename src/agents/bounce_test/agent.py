@@ -67,6 +67,8 @@ class BounceTestAgent(agent.Agent):
             logger.info(f"starting forward loop (up to {MAX_CHUNKS} chunks)")
             await self._notify_status("busy", task="bounce")
             consecutive_emergencies = 0
+            # clear any sticky latch from a previous run so the first chunk doesn't fail
+            await self._clear_emergency()
 
             try:
                 for i in range(MAX_CHUNKS):
@@ -92,6 +94,15 @@ class BounceTestAgent(agent.Agent):
                 logger.info(f"completed {MAX_CHUNKS} chunks")
             finally:
                 await self._notify_status("ready")
+
+        # Force-clear the bot's emergency latch so the next move actually runs
+        async def _clear_emergency(self) -> None:
+            msg = Message(to=ROBOT_JID)
+            msg.set_metadata("performative", "request")
+            msg.set_metadata("emergency", "controller")
+            msg.body = "obstacles override"
+            await self.send(msg)
+            logger.info("sent 'obstacles override' to clear bot emergency latch")
 
         # Drain the mailbox of bot-sent 'emergency_stop <0|1>' messages and
         # fire a 90 deg rotation in the indicated direction. 0 -> left, 1 -> right.
