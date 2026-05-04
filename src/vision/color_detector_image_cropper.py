@@ -8,13 +8,6 @@ import numpy as np
 # Configuration constants
 # =========================
 
-# Pink HSV ranges (handles hue wrap-around)
-PINK_LOWER_1 = np.array([140, 60, 60])
-PINK_UPPER_1 = np.array([179, 255, 255])
-
-PINK_LOWER_2 = np.array([0, 60, 60])
-PINK_UPPER_2 = np.array([5, 255, 255])
-
 # Morphological kernel
 MORPH_KERNEL = np.ones((3, 3), np.uint8)
 
