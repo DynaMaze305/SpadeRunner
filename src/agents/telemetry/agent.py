@@ -9,7 +9,7 @@ from aiohttp import web
 from spade import agent, behaviour
 from spade.message import Message
 
-from common.config import NAVIGATOR_JID
+from common.config import BOUNCE_TEST_JID, CALIBRATOR_JID, NAVIGATOR_JID
 from dashboard.dashboard_server import Dashboard
 from agents.telemetry.telemetrystore import TelemetryStore
 
@@ -166,6 +166,11 @@ class TelemetryAgent(agent.Agent):
         self.store.store_sample(sample)
 
     async def handle_command(self, cmd: str, target: str):
+        # broadcast 'stop' to every stoppable agent so the dashboard has one button
+        if cmd == "stop":
+            for jid in (NAVIGATOR_JID, CALIBRATOR_JID, BOUNCE_TEST_JID):
+                self.add_behaviour(self.XMPPSendMessage("stop", jid))
+            return
         self.add_behaviour(self.XMPPSendMessage(cmd, target))
 
     # ---------- setup ----------

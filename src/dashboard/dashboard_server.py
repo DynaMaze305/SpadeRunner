@@ -6,6 +6,7 @@ from common.config import BOUNCE_TEST_JID
 from common.config import CALIBRATOR_JID
 from common.config import NAVIGATOR_JID
 from common.config import SENSORS_JID
+from common.config import TELEMETRY_JID
 
 from dashboard.render.PageComponent import PageComponent
 from dashboard.render.AnalogGraphComponent import AnalogGraphComponent
@@ -22,6 +23,7 @@ BUTTONS = [
     {"text": "Calibrate rotation", "target_jid": f"{CALIBRATOR_JID}", "command": "calibrate rotation", "exclusive": True},
     {"text": "Calibrate distance", "target_jid": f"{CALIBRATOR_JID}", "command": "calibrate distance", "exclusive": True},
     {"text": "Bounce test", "target_jid": f"{BOUNCE_TEST_JID}", "command": "start bounce", "exclusive": True},
+    {"text": "Stop", "target_jid": f"{TELEMETRY_JID}", "command": "stop", "exclusive": False},
 ]
 
 class Dashboard:

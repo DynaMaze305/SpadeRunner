@@ -61,6 +61,9 @@ class BounceTestAgent(agent.Agent):
                 return
 
             body = (request.body or "").strip()
+            if body == "stop":
+                # nothing running, nothing to stop
+                return
             if body != "start bounce":
                 logger.warning(f"unknown command from {request.sender}: '{body}'")
                 return
@@ -71,14 +74,23 @@ class BounceTestAgent(agent.Agent):
             # clear any sticky latch from a previous run so the first chunk doesn't fail
             await self._clear_emergency()
 
+            self.stop_requested = False
             try:
                 for i in range(MAX_CHUNKS):
+                    if self.stop_requested:
+                        logger.info("stop requested, ending bounce loop")
+                        break
+
                     # one chunk forward
                     await self.motion.command_move(
                         distance=FORWARD_CHUNK_MM,
                         pwm=FORWARD_PWM,
                         ratio=FORWARD_RATIO,
                     )
+
+                    if self.stop_requested:
+                        logger.info("stop requested mid-chunk, ending bounce loop")
+                        break
 
                     # bot may send 'emergency_stop <0|1>' between chunks: 0 -> turn left, 1 -> turn right
                     # repeat rotations as many times as needed; MAX_CHUNKS is the only cap
@@ -110,6 +122,10 @@ class BounceTestAgent(agent.Agent):
                 if msg is None:
                     break
                 body = (msg.body or "").strip()
+                # dashboard 'stop' button -> bail out cleanly via the main loop
+                if body == "stop":
+                    self.stop_requested = True
+                    continue
                 # only the most recent emergency_stop side wins
                 if body.startswith("emergency_stop "):
                     side = body.split()[1]
