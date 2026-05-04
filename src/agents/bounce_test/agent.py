@@ -102,6 +102,7 @@ class BounceTestAgent(agent.Agent):
             msg.set_metadata("performative", "inform")
             msg.body = json.dumps({"type": status, "task": task})
             await self.send(msg)
+            logger.info(f"sent status='{status}' task='{task}' to telemetry")
 
     async def setup(self):
         logger.info("[INIT] BounceTestAgent ready")
