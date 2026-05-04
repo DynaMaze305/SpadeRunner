@@ -14,6 +14,7 @@ class MazeSolver:
         end_cell: str,
         n_rows: int,
         n_cols: int,
+        blocked_cells: set[str] | None = None,
     ) -> list[str] | None:
         # Create row labels based on the maze height: A, B, C, ...
         row_letters = list(string.ascii_uppercase[:n_rows])
@@ -35,6 +36,10 @@ class MazeSolver:
 
         # Stop early if the start or end cell does not exist in the maze
         if start_cell not in grid_walls or end_cell not in grid_walls:
+            return None
+
+        blocked_cells = blocked_cells or set()
+        if start_cell in blocked_cells or end_cell in blocked_cells:
             return None
 
         # Queue used for breadth-first search
@@ -89,6 +94,8 @@ class MazeSolver:
 
             # Add unvisited reachable neighbors to the search queue
             for neighbor in neighbors:
+                if neighbor in blocked_cells:
+                    continue
                 if neighbor not in visited:
                     visited.add(neighbor)
                     parent[neighbor] = current
