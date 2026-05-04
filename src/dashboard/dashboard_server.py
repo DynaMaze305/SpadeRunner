@@ -2,6 +2,7 @@
 import json
 import os
 from aiohttp import web, WSMsgType
+from common.config import BOUNCE_TEST_JID
 from common.config import CALIBRATOR_JID
 from common.config import NAVIGATOR_JID
 from common.config import SENSORS_JID
@@ -20,6 +21,7 @@ BUTTONS = [
     {"text": "Calibrate ratio", "target_jid": f"{CALIBRATOR_JID}", "command": "calibrate ratio", "exclusive": True},
     {"text": "Calibrate rotation", "target_jid": f"{CALIBRATOR_JID}", "command": "calibrate rotation", "exclusive": True},
     {"text": "Calibrate distance", "target_jid": f"{CALIBRATOR_JID}", "command": "calibrate distance", "exclusive": True},
+    {"text": "Bounce test", "target_jid": f"{BOUNCE_TEST_JID}", "command": "start bounce", "exclusive": True},
 ]
 
 class Dashboard:

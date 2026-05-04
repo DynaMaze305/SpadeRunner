@@ -3,11 +3,13 @@ when the bot trips emergency. listens for 'start bounce' and runs the loop.
 used to validate soft-bounce + hard-emergency without the full nav pipeline.
 """
 
+import json
 import logging
 
 from spade import agent, behaviour
+from spade.message import Message
 
-from common.config import ROBOT_JID
+from common.config import ROBOT_JID, TELEMETRY_JID
 from common.motion_client import MotionClient
 
 
@@ -58,37 +60,48 @@ class BounceTestAgent(agent.Agent):
                 return
 
             logger.info(f"starting forward loop (up to {MAX_CHUNKS} chunks)")
+            await self._notify_status("busy", task="bounce")
             consecutive_emergencies = 0
 
-            for i in range(MAX_CHUNKS):
-                # one chunk forward
-                await self.motion.command_move(
-                    distance=FORWARD_CHUNK_MM,
-                    pwm=FORWARD_PWM,
-                    ratio=FORWARD_RATIO,
-                )
-
-                # emergency tripped -> back up, count, bail if stuck
-                if self.motion.last_emergency:
-                    consecutive_emergencies += 1
-                    logger.warning(
-                        f"[EMERGENCY] tripped, consecutive={consecutive_emergencies}, "
-                        f"recovering with {EMERGENCY_RECOVERY_MM}mm backward override"
-                    )
-                    if consecutive_emergencies > MAX_CONSECUTIVE_EMERGENCIES:
-                        logger.error("stuck after recoveries, ending test")
-                        return
+            try:
+                for i in range(MAX_CHUNKS):
+                    # one chunk forward
                     await self.motion.command_move(
-                        distance=EMERGENCY_RECOVERY_MM,
-                        pwm=EMERGENCY_RECOVERY_PWM,
+                        distance=FORWARD_CHUNK_MM,
+                        pwm=FORWARD_PWM,
                         ratio=FORWARD_RATIO,
-                        override=True,
                     )
-                    self.motion.last_emergency = False
-                else:
-                    consecutive_emergencies = 0
 
-            logger.info(f"completed {MAX_CHUNKS} chunks")
+                    # emergency tripped -> back up, count, bail if stuck
+                    if self.motion.last_emergency:
+                        consecutive_emergencies += 1
+                        logger.warning(
+                            f"[EMERGENCY] tripped, consecutive={consecutive_emergencies}, "
+                            f"recovering with {EMERGENCY_RECOVERY_MM}mm backward override"
+                        )
+                        if consecutive_emergencies > MAX_CONSECUTIVE_EMERGENCIES:
+                            logger.error("stuck after recoveries, ending test")
+                            return
+                        await self.motion.command_move(
+                            distance=EMERGENCY_RECOVERY_MM,
+                            pwm=EMERGENCY_RECOVERY_PWM,
+                            ratio=FORWARD_RATIO,
+                            override=True,
+                        )
+                        self.motion.last_emergency = False
+                    else:
+                        consecutive_emergencies = 0
+
+                logger.info(f"completed {MAX_CHUNKS} chunks")
+            finally:
+                await self._notify_status("ready")
+
+        # Tells the dashboard (via telemetry) we just started or finished a job
+        async def _notify_status(self, status: str, task: str = "") -> None:
+            msg = Message(to=TELEMETRY_JID)
+            msg.set_metadata("performative", "inform")
+            msg.body = json.dumps({"type": status, "task": task})
+            await self.send(msg)
 
     async def setup(self):
         logger.info("[INIT] BounceTestAgent ready")
