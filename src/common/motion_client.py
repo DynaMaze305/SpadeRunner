@@ -12,6 +12,28 @@ class MotionClient:
         self.jid = jid
         # set by command_move when the bot's reply says emergency tripped
         self.last_emergency = False
+        # captured by _wait_for_ack while filtering out non-ack messages
+        self.stop_requested = False
+        self.last_emergency_side = None  # "0" or "1" if bot signalled emergency_stop
+
+    # Drain receives until we get a real bot ack (body starts with "Executed command").
+    # Side signals from telemetry / SensorsAgent that arrive while we're waiting are
+    # captured on the instance so the calling agent can read them after the ack.
+    async def _wait_for_ack(self, timeout: int = 30):
+        while True:
+            msg = await self.behaviour.receive(timeout=timeout)
+            if msg is None:
+                return None
+            body = (msg.body or "").strip()
+            if body.startswith("Executed command"):
+                return body
+            # not the ack -> classify as a side signal and keep waiting
+            if body == "stop":
+                self.stop_requested = True
+            elif body.startswith("emergency_stop "):
+                self.last_emergency_side = body.split()[1]
+            # emergency_maneuver / emergency_clear / others: just log
+            logger.info(f"signal received while waiting for ack: {body}")
 
     # Sending a rotation command to the robot
     async def command_rotation(self, signed_degrees: float, duration=None, pwm=None, ratio=None) -> bool:
@@ -35,12 +57,12 @@ class MotionClient:
         await self.behaviour.send(msg)
         logger.info(f"sent '{command}' to {self.jid}")
 
-        # Waits for the answer
-        ack = await self.behaviour.receive(timeout=30)
-        if ack is None:
+        # Waits for the answer (filters out side signals)
+        body = await self._wait_for_ack()
+        if body is None:
             logger.error("no ack from robot after rotation command")
             return False
-        logger.info(f"robot ack: {ack.body}")
+        logger.info(f"robot ack: {body}")
         return True
 
     async def command_move(self, distance: float, duration=None, pwm=None, ratio=None, override: bool = False) -> bool:
@@ -68,12 +90,11 @@ class MotionClient:
         await self.behaviour.send(msg)
         logger.info(f"sent '{command}' to {self.jid}")
 
-        # waits for an answer from the robot
-        ack = await self.behaviour.receive(timeout=30)
-        if ack is None:
+        # waits for an answer from the robot (filters out side signals)
+        body = await self._wait_for_ack()
+        if body is None:
             logger.error("no ack from robot after move command")
             return False
-        body = ack.body or ""
         # bot reply contains "Error: MotionManager emergency stop active" when latched
         self.last_emergency = "emergency stop active" in body.lower()
         logger.info(f"robot ack: {body}")
@@ -93,9 +114,9 @@ class MotionClient:
         await self.behaviour.send(msg)
         logger.info(f"sent '{command}' to {self.jid}")
 
-        ack = await self.behaviour.receive(timeout=10)
-        if ack is None:
+        body = await self._wait_for_ack(timeout=10)
+        if body is None:
             logger.error(f"no ack from robot after calibrate {key}")
             return False
-        logger.info(f"robot ack: {ack.body}")
+        logger.info(f"robot ack: {body}")
         return True

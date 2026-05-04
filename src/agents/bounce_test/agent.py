@@ -116,20 +116,24 @@ class BounceTestAgent(agent.Agent):
         # fire a 90 deg rotation in the indicated direction. 0 -> left, 1 -> right.
         # Returns True if a maneuver was performed (caller should continue the loop).
         async def _handle_emergency_maneuvers(self) -> bool:
-            side = None
+            # 1. signals captured by motion_client._wait_for_ack while it filtered
+            side = self.motion.last_emergency_side
+            self.motion.last_emergency_side = None
+            if self.motion.stop_requested:
+                self.stop_requested = True
+                self.motion.stop_requested = False
+
+            # 2. anything still queued in the agent's own mailbox
             while True:
                 msg = await self.receive(timeout=0.05)
                 if msg is None:
                     break
                 body = (msg.body or "").strip()
-                # dashboard 'stop' button -> bail out cleanly via the main loop
                 if body == "stop":
                     self.stop_requested = True
                     continue
-                # only the most recent emergency_stop side wins
                 if body.startswith("emergency_stop "):
                     side = body.split()[1]
-                # 'emergency_maneuver right/left' is a duplicate signal, drop silently
                 elif body.startswith("emergency_maneuver"):
                     continue
                 else:
