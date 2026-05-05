@@ -17,10 +17,16 @@ class MiniGridPlanner:
         divisions: int,
         obstacle_margin_px: int = 0,
         robot_margin_px: int = 0,
+        portal_indexes: set[int] | None = None,
     ) -> None:
         self.divisions = divisions
         self.obstacle_margin_px = obstacle_margin_px
         self.robot_margin_px = robot_margin_px
+        self.portal_indexes = (
+            portal_indexes
+            if portal_indexes is not None
+            else {row_number - 1 for row_number in (2, 3, 4)}
+        )
 
     def plan_blocked_cell(
         self,
@@ -325,8 +331,7 @@ class MiniGridPlanner:
         return neighbors
 
     def _preferred_row_penalty(self, row: int) -> int:
-        preferred_rows = {row_number - 1 for row_number in (2, 3, 4)}
-        if row in preferred_rows:
+        if row in self.portal_indexes:
             return 0
         return 100
 
@@ -425,9 +430,37 @@ class MiniGridPlanner:
         next_cell = self._rc_cell(next_parent_row, next_parent_col)
         if next_cell not in allowed_cells:
             return None
+        if not self._portal_step_is_allowed(
+            parent_row,
+            parent_col,
+            next_parent_row,
+            next_parent_col,
+            row,
+            col,
+        ):
+            return None
         if not self._parent_step_is_open(cell, next_cell, frame):
             return None
         return (next_cell, wrapped_row, wrapped_col)
+
+    def _portal_step_is_allowed(
+        self,
+        parent_row: int,
+        parent_col: int,
+        next_parent_row: int,
+        next_parent_col: int,
+        row: int,
+        col: int,
+    ) -> bool:
+        dr = next_parent_row - parent_row
+        dc = next_parent_col - parent_col
+        if abs(dr) + abs(dc) != 1:
+            return False
+        if dc != 0:
+            return row in self.portal_indexes
+        if dr != 0:
+            return col in self.portal_indexes
+        return False
 
     def _parent_step_is_open(self, from_cell: str, to_cell: str, frame) -> bool:
         from_rc = self._cell_rc(from_cell)

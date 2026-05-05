@@ -195,7 +195,7 @@ class NavigationOrchestrator:
 
             # Proximity check: count as reached if robot is within the configured
             # radius from the target cell center, even if still labelled in a neighbour cell.
-            target_center = self._safe_cell_center_local(cfg.target_cell, frame)
+            target_center = self._cell_center_local(cfg.target_cell, frame)
             robot_local_pos_check = self._robot_local_position(frame, robot)
             distance_to_target_mm = None
             if target_center is not None:
@@ -517,7 +517,7 @@ class NavigationOrchestrator:
         cy = (y_lines[r] + y_lines[r + 1]) // 2
         return (cx, cy)
 
-    def _safe_cell_center_local(self, label: str | None, frame) -> tuple[int, int] | None:
+    def _cell_center_local(self, label: str | None, frame) -> tuple[int, int] | None:
         rc = self._cell_rc(label)
         if rc is None:
             return None
@@ -530,79 +530,7 @@ class NavigationOrchestrator:
         x_right = frame.x_lines[col + 1]
         y_top = frame.y_lines[row]
         y_bottom = frame.y_lines[row + 1]
-        cx = (x_left + x_right) // 2
-        cy = (y_top + y_bottom) // 2
-
-        inset = self._dynamic_safe_cell_inset(
-            cx,
-            cy,
-            x_left,
-            y_top,
-            x_right,
-            y_bottom,
-            frame,
-        )
-        walls = frame.grid_walls.get(label, {})
-        if (
-            (col == 0 and walls.get("left"))
-            or (col == len(frame.x_lines) - 2 and walls.get("right"))
-            or (row == 0 and walls.get("bottom"))
-            or (row == len(frame.y_lines) - 2 and walls.get("top"))
-        ):
-            cell_limit = max(0, min(x_right - x_left, y_bottom - y_top) // 3)
-            inset = min(max(inset, self.config.safe_cell_inset_px), cell_limit)
-
-        if inset == 0:
-            return (cx, cy)
-
-        if walls.get("left"):
-            cx += inset
-        if walls.get("right"):
-            cx -= inset
-        # MazeGridAnalyzer names these from the project angle convention:
-        # "bottom" is the image-top edge, "top" is the image-bottom edge.
-        if walls.get("bottom"):
-            cy += inset
-        if walls.get("top"):
-            cy -= inset
-
-        return (
-            min(max(cx, x_left + inset), x_right - inset),
-            min(max(cy, y_top + inset), y_bottom - inset),
-        )
-
-    def _dynamic_safe_cell_inset(
-        self,
-        cx: int,
-        cy: int,
-        x_left: int,
-        y_top: int,
-        x_right: int,
-        y_bottom: int,
-        frame,
-    ) -> int:
-        max_inset = max(0, self.config.safe_cell_inset_px)
-        if max_inset == 0:
-            return 0
-
-        maze_x1 = frame.x_lines[0]
-        maze_x2 = frame.x_lines[-1]
-        maze_y1 = frame.y_lines[0]
-        maze_y2 = frame.y_lines[-1]
-        maze_cx = (maze_x1 + maze_x2) / 2.0
-        maze_cy = (maze_y1 + maze_y2) / 2.0
-        max_dist = math.hypot(maze_x2 - maze_cx, maze_y2 - maze_cy)
-        if max_dist <= 0:
-            return 0
-
-        edge_factor = math.hypot(cx - maze_cx, cy - maze_cy) / max_dist
-        start = min(max(self.config.safe_cell_inset_start_factor, 0.0), 0.99)
-        if edge_factor <= start:
-            return 0
-
-        ramp = (edge_factor - start) / (1.0 - start)
-        cell_limit = max(0, min(x_right - x_left, y_bottom - y_top) // 3)
-        return min(int(round(max_inset * ramp)), cell_limit)
+        return ((x_left + x_right) // 2, (y_top + y_bottom) // 2)
 
     def _save_debug(
         self,

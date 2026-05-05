@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import math
-
 from pathfinding.mini_grid_planner import MiniGridPlanner
 from pathfinding.pathfinding import obstacle_cells_from_frame, solve_from_frame
 
@@ -12,12 +10,8 @@ class PathPlanner:
     def __init__(
         self,
         mini_grid_planner: MiniGridPlanner | None = None,
-        safe_cell_inset_px: int = 0,
-        safe_cell_inset_start_factor: float = 0.45,
     ) -> None:
         self.mini_grid_planner = mini_grid_planner
-        self.safe_cell_inset_px = safe_cell_inset_px
-        self.safe_cell_inset_start_factor = safe_cell_inset_start_factor
 
     def plan(
         self,
@@ -61,6 +55,7 @@ class PathPlanner:
             ignored_cells={coarse_path[-1]},
         )
         points: list[tuple[int, int]] = []
+        protected_points: set[tuple[int, int]] = set()
         index = 0
 
         while index < len(coarse_path):
@@ -69,6 +64,7 @@ class PathPlanner:
                 point = self._route_point_for_cell(frame, coarse_path, index, start_point, goal_point)
                 if not points or points[-1] != point:
                     points.append(point)
+                protected_points.add(point)
                 index += 1
                 continue
 
@@ -83,8 +79,13 @@ class PathPlanner:
             corridor_start = self._route_point_for_cell(
                 frame, coarse_path, before_index, start_point, goal_point,
             )
-            corridor_goal = self._route_point_for_cell(
-                frame, coarse_path, after_index, start_point, goal_point,
+            corridor_goal = self._blocked_corridor_goal(
+                frame=frame,
+                coarse_path=coarse_path,
+                blocked_cells=blocked_cells,
+                blocked_end_index=after_index - 1,
+                after_index=after_index,
+                goal_point=goal_point,
             )
             mini_points = self.mini_grid_planner.plan_cell_sequence(
                 frame=frame,
@@ -99,19 +100,56 @@ class PathPlanner:
                 if not points or points[-1] != point:
                     points.append(point)
 
-            index = after_index + 1
+            index = after_index
 
-        return self._simplify_axis_aligned_points(points)
+        if not blocked_cells:
+            return points
+
+        return self._simplify_axis_aligned_points(points, protected_points)
+
+    def _blocked_corridor_goal(
+        self,
+        frame,
+        coarse_path: list[str],
+        blocked_cells: set[str],
+        blocked_end_index: int,
+        after_index: int,
+        goal_point: tuple[int, int],
+    ) -> tuple[int, int]:
+        if (
+            self.mini_grid_planner is None
+            or after_index >= len(coarse_path)
+            or after_index == len(coarse_path) - 1
+            or coarse_path[after_index] in blocked_cells
+            or blocked_end_index < 0
+        ):
+            if after_index == len(coarse_path) - 1:
+                return goal_point
+            return self._cell_center(frame, coarse_path[after_index])
+
+        from_cell = coarse_path[blocked_end_index]
+        to_cell = coarse_path[after_index]
+        entry = self.mini_grid_planner._entry_mini_cell(from_cell, to_cell)
+        bounds = self.mini_grid_planner._cell_bounds(to_cell, frame.x_lines, frame.y_lines)
+        if entry is None or bounds is None:
+            return self._cell_center(frame, to_cell)
+        return self.mini_grid_planner._mini_cell_center(bounds, entry)
 
     @staticmethod
     def _simplify_axis_aligned_points(
         points: list[tuple[int, int]],
+        protected_points: set[tuple[int, int]] | None = None,
     ) -> list[tuple[int, int]]:
         if len(points) <= 2:
             return points
 
+        protected_points = protected_points or set()
         simplified = [points[0]]
         for index, point in enumerate(points[1:-1], start=1):
+            if point in protected_points:
+                simplified.append(point)
+                continue
+
             previous = simplified[-1]
             next_point = points[index + 1]
             if (
@@ -135,75 +173,13 @@ class PathPlanner:
             return start_point
         if index == len(coarse_path) - 1:
             return goal_point
-        return self._safe_cell_center(frame, coarse_path[index])
+        return self._cell_center(frame, coarse_path[index])
 
-    def _safe_cell_center(self, frame, cell: str) -> tuple[int, int]:
+    def _cell_center(self, frame, cell: str) -> tuple[int, int]:
         row = ord(cell[0].upper()) - ord("A")
         col = int(cell[1:]) - 1
         x_left = frame.x_lines[col]
         x_right = frame.x_lines[col + 1]
         y_top = frame.y_lines[row]
         y_bottom = frame.y_lines[row + 1]
-        cx = (x_left + x_right) // 2
-        cy = (y_top + y_bottom) // 2
-
-        walls = frame.grid_walls.get(cell, {})
-        inset = self._dynamic_safe_cell_inset(cx, cy, x_left, y_top, x_right, y_bottom, frame)
-        if (
-            (col == 0 and walls.get("left"))
-            or (col == len(frame.x_lines) - 2 and walls.get("right"))
-            or (row == 0 and walls.get("bottom"))
-            or (row == len(frame.y_lines) - 2 and walls.get("top"))
-        ):
-            cell_limit = max(0, min(x_right - x_left, y_bottom - y_top) // 3)
-            inset = min(max(inset, self.safe_cell_inset_px), cell_limit)
-
-        if inset == 0:
-            return (cx, cy)
-
-        if walls.get("left"):
-            cx += inset
-        if walls.get("right"):
-            cx -= inset
-        if walls.get("bottom"):
-            cy += inset
-        if walls.get("top"):
-            cy -= inset
-
-        return (
-            min(max(cx, x_left + inset), x_right - inset),
-            min(max(cy, y_top + inset), y_bottom - inset),
-        )
-
-    def _dynamic_safe_cell_inset(
-        self,
-        cx: int,
-        cy: int,
-        x_left: int,
-        y_top: int,
-        x_right: int,
-        y_bottom: int,
-        frame,
-    ) -> int:
-        max_inset = max(0, self.safe_cell_inset_px)
-        if max_inset == 0:
-            return 0
-
-        maze_x1 = frame.x_lines[0]
-        maze_x2 = frame.x_lines[-1]
-        maze_y1 = frame.y_lines[0]
-        maze_y2 = frame.y_lines[-1]
-        maze_cx = (maze_x1 + maze_x2) / 2.0
-        maze_cy = (maze_y1 + maze_y2) / 2.0
-        max_dist = math.hypot(maze_x2 - maze_cx, maze_y2 - maze_cy)
-        if max_dist <= 0:
-            return 0
-
-        edge_factor = math.hypot(cx - maze_cx, cy - maze_cy) / max_dist
-        start = min(max(self.safe_cell_inset_start_factor, 0.0), 0.99)
-        if edge_factor <= start:
-            return 0
-
-        ramp = (edge_factor - start) / (1.0 - start)
-        cell_limit = max(0, min(x_right - x_left, y_bottom - y_top) // 3)
-        return min(int(round(max_inset * ramp)), cell_limit)
+        return ((x_left + x_right) // 2, (y_top + y_bottom) // 2)

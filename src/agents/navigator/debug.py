@@ -70,8 +70,6 @@ class NavigatorDebug:
         localizer,
         obstacle_margin_px: int = 0,
         robot_margin_px: int = 0,
-        safe_cell_inset_px: int = 0,
-        safe_cell_inset_start_factor: float = 0.45,
         mini_grid_divisions: int = 5,
         camera: Camera | None = None,
     ) -> None:
@@ -80,8 +78,6 @@ class NavigatorDebug:
         self.localizer = localizer
         self.obstacle_margin_px = obstacle_margin_px
         self.robot_margin_px = robot_margin_px
-        self.safe_cell_inset_px = safe_cell_inset_px
-        self.safe_cell_inset_start_factor = safe_cell_inset_start_factor
         self.mini_grid_divisions = mini_grid_divisions
         self.camera = camera or Camera()
         os.makedirs(run_dir, exist_ok=True)
@@ -290,7 +286,7 @@ class NavigatorDebug:
                 next_label = "mini"
             elif path and len(path) >= 2:
                 next_cell = path[1]
-                next_center = self._safe_cell_center(next_cell, frame)
+                next_center = self._cell_center(next_cell, frame)
                 next_label = next_cell
             else:
                 next_center = None
@@ -410,7 +406,7 @@ class NavigatorDebug:
             cells_to_visit = path
 
         for cell in cells_to_visit:
-            center = self._safe_cell_center(cell, frame)
+            center = self._cell_center(cell, frame)
             if center is not None:
                 waypoints.append(center)
 
@@ -534,88 +530,13 @@ class NavigatorDebug:
         cy = (y_lines[r] + y_lines[r + 1]) // 2
         return (cx, cy)
 
-    def _safe_cell_center(self, label: str, frame) -> tuple[int, int] | None:
+    def _cell_center(self, label: str, frame) -> tuple[int, int] | None:
         bounds = self._cell_bounds(label, frame.x_lines, frame.y_lines)
         if bounds is None:
             return None
 
         x_left, y_top, x_right, y_bottom = bounds
-        cx = (x_left + x_right) // 2
-        cy = (y_top + y_bottom) // 2
-
-        inset = self._dynamic_safe_cell_inset(
-            cx,
-            cy,
-            x_left,
-            y_top,
-            x_right,
-            y_bottom,
-            frame,
-        )
-        row_col = self._label_rc(label)
-        walls = frame.grid_walls.get(label, {})
-        if row_col is not None:
-            row, col = row_col
-            if (
-                (col == 0 and walls.get("left"))
-                or (col == len(frame.x_lines) - 2 and walls.get("right"))
-                or (row == 0 and walls.get("bottom"))
-                or (row == len(frame.y_lines) - 2 and walls.get("top"))
-            ):
-                cell_limit = max(0, min(x_right - x_left, y_bottom - y_top) // 3)
-                inset = min(max(inset, self.safe_cell_inset_px), cell_limit)
-
-        if inset == 0:
-            return (cx, cy)
-
-        if walls.get("left"):
-            cx += inset
-        if walls.get("right"):
-            cx -= inset
-        # MazeGridAnalyzer uses "bottom" for the image-top cell edge and
-        # "top" for the image-bottom cell edge.
-        if walls.get("bottom"):
-            cy += inset
-        if walls.get("top"):
-            cy -= inset
-
-        return (
-            min(max(cx, x_left + inset), x_right - inset),
-            min(max(cy, y_top + inset), y_bottom - inset),
-        )
-
-    def _dynamic_safe_cell_inset(
-        self,
-        cx: int,
-        cy: int,
-        x_left: int,
-        y_top: int,
-        x_right: int,
-        y_bottom: int,
-        frame,
-    ) -> int:
-        max_inset = max(0, self.safe_cell_inset_px)
-        if max_inset == 0:
-            return 0
-
-        maze_x1 = frame.x_lines[0]
-        maze_x2 = frame.x_lines[-1]
-        maze_y1 = frame.y_lines[0]
-        maze_y2 = frame.y_lines[-1]
-        maze_cx = (maze_x1 + maze_x2) / 2.0
-        maze_cy = (maze_y1 + maze_y2) / 2.0
-        max_dist = math.hypot(maze_x2 - maze_cx, maze_y2 - maze_cy)
-        if max_dist <= 0:
-            return 0
-
-        edge_factor = math.hypot(cx - maze_cx, cy - maze_cy) / max_dist
-        start = min(max(self.safe_cell_inset_start_factor, 0.0), 0.99)
-        if edge_factor <= start:
-            return 0
-
-        ramp = (edge_factor - start) / (1.0 - start)
-        cell_limit = max(0, min(x_right - x_left, y_bottom - y_top) // 3)
-        return min(int(round(max_inset * ramp)), cell_limit)
+        return ((x_left + x_right) // 2, (y_top + y_bottom) // 2)
 
     @staticmethod
     def _label_rc(label: str | None) -> tuple[int, int] | None:

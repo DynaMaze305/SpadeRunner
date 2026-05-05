@@ -10,7 +10,7 @@ from common.config import ARUCO_ANGLE_OFFSET
 # Tests construct a NavigatorConfig directly; production reads env via from_env().
 @dataclass(frozen=True)
 class NavigatorConfig:
-    target_cell: str = "C11"
+    target_cell: str = "A11"
     max_steps: int = 50
     max_bad_grid_retries: int = 5
 
@@ -40,7 +40,7 @@ class NavigatorConfig:
     # Cell width is 200 mm, average detected cell width is ~67.5 px -> ~2.96 mm/px.
     mm_per_pixel: float = 2.96
 
-    obstacle_avoidance_margin_px: int = 1
+    obstacle_avoidance_margin_px: int = 5
     robot_clearance_margin_px: int = 0
     obstacle_mini_grid_divisions: int = 5
     # Fraction of the computed distance actually sent to the robot per step.
@@ -50,9 +50,6 @@ class NavigatorConfig:
     # Radius around the target cell center that still counts as "reached" (mm).
     cell_reached_radius_mm: float = 15.0 #hack
 
-    # Pixel inset used to aim away from walls instead of the exact visual cell center.
-    safe_cell_inset_px: int = 12
-    safe_cell_inset_start_factor: float = 0.45
     @classmethod
     def from_env(cls) -> "NavigatorConfig":
         return cls(
@@ -128,18 +125,6 @@ class NavigatorConfig:
                 os.getenv(
                     "NAVIGATOR_CELL_REACHED_RADIUS_MM",
                     str(cls.cell_reached_radius_mm),
-                )
-            ),
-            safe_cell_inset_px=int(
-                os.getenv(
-                    "NAVIGATOR_SAFE_CELL_INSET_PX",
-                    str(cls.safe_cell_inset_px),
-                )
-            ),
-            safe_cell_inset_start_factor=float(
-                os.getenv(
-                    "NAVIGATOR_SAFE_CELL_INSET_START_FACTOR",
-                    str(cls.safe_cell_inset_start_factor),
                 )
             ),
         )
