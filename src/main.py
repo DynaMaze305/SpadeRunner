@@ -31,13 +31,14 @@ from agents.navigator.agent import NavigatorAgent
 from agents.camera_receiver.agent import CameraReceiverAgent
 from agents.telemetry.agent import TelemetryAgent
 from common.runner import start_agent
+from common.config import *
 
 # Maps MODE value to the agent class
 AGENTS = {
-    "calibrator": CalibratorAgent,
-    "navigator": NavigatorAgent,
-    "camera_test": CameraReceiverAgent,
-    "telemetry": TelemetryAgent,
+    CALIBRATOR_JID: CalibratorAgent,
+    NAVIGATOR_JID: NavigatorAgent,
+    CAMERA_JID: CameraReceiverAgent,
+    TELEMETRY_JID: TelemetryAgent,
 }
 
 
@@ -45,8 +46,8 @@ async def main():
     logger.info(f"Running in Alphabot2 mode")
 
     active = []
-    for _, a in AGENTS.items():
-        active.append(await start_agent(a))
+    for jid, a in AGENTS.items():
+        active.append(await start_agent(a, jid))
 
     logger.info("Agents started successfully")
 

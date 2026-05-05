@@ -8,11 +8,12 @@ logger = logging.getLogger(__name__)
 from agents.telemetry.agent import TelemetryAgent
 from agents.keyboard_controller.agent import KeyBoardController
 from common.runner import start_agent
+from common.config import *
 
 # Maps MODE value to the agent class
 AGENTS = {
     #"keyboard" : KeyBoardController,
-    "telemetry" : TelemetryAgent
+    TELEMETRY_JID : TelemetryAgent
 }
 
 
@@ -20,8 +21,8 @@ async def main():
     logger.info(f"Running in Alphabot2 mode")
 
     active = []
-    for _, a in AGENTS.items():
-        active.append(await start_agent(a))
+    for k, a in AGENTS.items():
+        active.append(await start_agent(a, k))
 
     logger.info("Agents started successfully")
 
