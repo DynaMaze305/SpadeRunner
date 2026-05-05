@@ -67,6 +67,11 @@ class NavigatorAgent(agent.Agent):
             vision = MazeVisionPipeline(
                 threshold_ratio=cfg.grid_threshold_ratio,
                 min_gap=cfg.grid_min_gap,
+                expected_rows=cfg.expected_rows,
+                expected_cols=cfg.expected_cols,
+                hardcoded_grid_enabled=cfg.hardcoded_grid_enabled,
+                hardcoded_grid_x_fractions=cfg.hardcoded_grid_x_fractions,
+                hardcoded_grid_y_fractions=cfg.hardcoded_grid_y_fractions,
             )
             localizer = RobotLocalizationStep(angle_offset_deg=cfg.angle_offset_deg)
             planner = PathPlanner(

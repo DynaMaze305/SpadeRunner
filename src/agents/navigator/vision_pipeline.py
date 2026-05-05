@@ -48,10 +48,20 @@ class MazeVisionPipeline:
         threshold_ratio: float = 0.03,
         min_gap: int = 15,
         wall_threshold: int = 100,
+        expected_rows: int = 3,
+        expected_cols: int = 11,
+        hardcoded_grid_enabled: bool = False,
+        hardcoded_grid_x_fractions: tuple[float, ...] = (),
+        hardcoded_grid_y_fractions: tuple[float, ...] = (),
     ) -> None:
         self.threshold_ratio = threshold_ratio
         self.min_gap = min_gap
         self.wall_threshold = wall_threshold
+        self.expected_rows = expected_rows
+        self.expected_cols = expected_cols
+        self.hardcoded_grid_enabled = hardcoded_grid_enabled
+        self.hardcoded_grid_x_fractions = hardcoded_grid_x_fractions
+        self.hardcoded_grid_y_fractions = hardcoded_grid_y_fractions
 
         self.camera = Camera()
         self.cropper = ColorDetectorImageCropper()
@@ -88,6 +98,8 @@ class MazeVisionPipeline:
         )
         x_lines: list[int] = grid_result["x_lines"]
         y_lines: list[int] = grid_result["y_lines"]
+        if self.hardcoded_grid_enabled:
+            x_lines, y_lines = self._hardcoded_grid_lines(wall_clean.shape)
 
         n_rows = max(0, len(y_lines) - 1)
         n_cols = max(0, len(x_lines) - 1)
@@ -156,3 +168,31 @@ class MazeVisionPipeline:
             obstacles=cached.obstacles,
             obstacle_robot_exclusions=cached.obstacle_robot_exclusions,
         )
+
+    def _hardcoded_grid_lines(
+        self,
+        shape: tuple[int, ...],
+    ) -> tuple[list[int], list[int]]:
+        h, w = shape[:2]
+        x_fractions = self.hardcoded_grid_x_fractions or self._uniform_fractions(
+            self.expected_cols
+        )
+        y_fractions = self.hardcoded_grid_y_fractions or self._uniform_fractions(
+            self.expected_rows
+        )
+        return (
+            self._fraction_lines(x_fractions, w),
+            self._fraction_lines(y_fractions, h),
+        )
+
+    @staticmethod
+    def _uniform_fractions(cells: int) -> tuple[float, ...]:
+        cells = max(1, cells)
+        return tuple(index / cells for index in range(cells + 1))
+
+    @staticmethod
+    def _fraction_lines(fractions: tuple[float, ...], size: int) -> list[int]:
+        return [
+            int(round(min(max(fraction, 0.0), 1.0) * size))
+            for fraction in fractions
+        ]

@@ -25,6 +25,14 @@ class NavigatorConfig:
 
     grid_threshold_ratio: float = 0.03
     grid_min_gap: int = 15
+    hardcoded_grid_enabled: bool = True
+    hardcoded_grid_x_fractions: tuple[float, ...] = (
+        0.025, 0.1277, 0.2105, 0.2932, 0.3760, 0.4586,
+        0.5414, 0.6240, 0.7068, 0.7895, 0.8723, 0.975,
+    )
+    hardcoded_grid_y_fractions: tuple[float, ...] = (
+        0.05, 0.4, 0.667, 0.9,
+    )
 
     lookahead: int = 2
 
@@ -49,6 +57,24 @@ class NavigatorConfig:
 
     # Radius around the target cell center that still counts as "reached" (mm).
     cell_reached_radius_mm: float = 15.0 #hack
+
+    @staticmethod
+    def _env_bool(name: str, default: bool) -> bool:
+        value = os.getenv(name)
+        if value is None:
+            return default
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+
+    @staticmethod
+    def _env_float_tuple(name: str, default: tuple[float, ...]) -> tuple[float, ...]:
+        value = os.getenv(name)
+        if value is None or not value.strip():
+            return default
+        return tuple(
+            float(part.strip())
+            for part in value.split(",")
+            if part.strip()
+        )
 
     @classmethod
     def from_env(cls) -> "NavigatorConfig":
@@ -79,6 +105,18 @@ class NavigatorConfig:
             ),
             grid_min_gap=int(
                 os.getenv("NAVIGATOR_GRID_MIN_GAP", str(cls.grid_min_gap))
+            ),
+            hardcoded_grid_enabled=cls._env_bool(
+                "NAVIGATOR_HARDCODED_GRID_ENABLED",
+                cls.hardcoded_grid_enabled,
+            ),
+            hardcoded_grid_x_fractions=cls._env_float_tuple(
+                "NAVIGATOR_HARDCODED_GRID_X_FRACTIONS",
+                cls.hardcoded_grid_x_fractions,
+            ),
+            hardcoded_grid_y_fractions=cls._env_float_tuple(
+                "NAVIGATOR_HARDCODED_GRID_Y_FRACTIONS",
+                cls.hardcoded_grid_y_fractions,
             ),
             lookahead=int(os.getenv("NAVIGATOR_LOOKAHEAD", str(cls.lookahead))),
             photos_dir=os.getenv("NAVIGATOR_PHOTOS_DIR", cls.photos_dir),

@@ -450,7 +450,7 @@ class NavigationOrchestrator:
     def _next_point_waypoint(
         robot_local_pos: tuple[int, int],
         point_path: list[tuple[int, int]],
-        reached_px: float = 5.0,
+        reached_px: float = 2.0,
     ) -> tuple[tuple[int, int], tuple[int, int], float] | None:
         if not point_path:
             return None
