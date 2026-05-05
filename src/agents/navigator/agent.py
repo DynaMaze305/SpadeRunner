@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import time
@@ -17,7 +18,7 @@ from agents.navigator.result import NavigationOutcome
 from agents.navigator.vision_pipeline import MazeVisionPipeline
 
 from common.camera_client import CameraClient
-from common.config import TELEMETRY_JID, ROBOT_JID
+from common.config import TELEMETRY_JID, ROBOT_JID, PAUSE_TIME
 from common.path_motion_executor import PathMotionExecutor
 from common.run_dir import new_run_dir
 
@@ -34,8 +35,29 @@ class NavigatorAgent(agent.Agent):
 
     def __init__(self, jid, password, verify_security = False):
         super().__init__(jid, password, verify_security)
+        self.current_navigator = None
 
-    class NavigateBehaviour(behaviour.CyclicBehaviour):
+    class NavigatorListenner(behaviour.CyclicBehaviour):
+        async def runt(self):
+            cfg: NavigatorConfig = self.agent.cfg
+
+            logger.info("[WAIT] Waiting for navigation start...")
+            request = await self.receive(timeout=cfg.request_timeout_s)
+            if request is None:
+                return
+
+            logger.info(f"[REQUEST] From: {request.sender} | Body: {request.body}")
+            logger.info(f"[ROBOT JID] {ROBOT_JID}")
+
+            if request.body == "penality":
+                self.agent.paused = True
+                return
+
+            if request.body == "request path" and self.agent.current_navigator is None:
+                self.agent.current_navigator = self.agent.NavigateBehaviour()
+                self.agent.add_behaviour(self.agent.current_navigator)
+
+    class NavigateBehaviour(behaviour.OneShotBehaviour):
 
         # Pushes the path of the latest per-step path image to the logger agent
         # via XMPP. The logger reads the file from the shared filesystem.
@@ -59,21 +81,9 @@ class NavigatorAgent(agent.Agent):
             logger.info(f"[NAV] notified {TELEMETRY_JID}: image {image_path}")
 
         async def run(self):
-            cfg: NavigatorConfig = self.agent.cfg
-
-            logger.info("[WAIT] Waiting for navigation start...")
-            request = await self.receive(timeout=cfg.request_timeout_s)
-            if request is None:
-                return
-
-            logger.info(f"[REQUEST] From: {request.sender} | Body: {request.body}")
-            logger.info(f"[ROBOT JID] {ROBOT_JID}")
-
-            if request.body != "request path":
-                if request.body == "request display":
-                    self.agent.add_behaviour(self.agent.SendDisplay(str(request.sender.bare())))
-                logger.warning(f"[WARN] Unknown request: {request.body}")
-                return
+            if self.agent.paused:
+                await asyncio.sleep(PAUSE_TIME)
+                self.agent.paused = False
 
             logger.info("[START] Navigation requested")
             logger.info(
@@ -156,6 +166,9 @@ class NavigatorAgent(agent.Agent):
                 else "navigation failed"
             )
             await self.send(reply)
+        
+        async def on_end(self):
+            self.agent.current_navigator = None
 
     async def setup(self):
         self.cfg = NavigatorConfig.from_env()
