@@ -129,5 +129,7 @@ class MotorComponent(DashboardComponent):
     def update_js(self):
         return f"""
             // ### Motor Component (update js) ###
-            update_{self.pwm_key}(data)
+            if (msg.type === "data") {{
+                update_{self.pwm_key}(msg.values)
+            }}
 """

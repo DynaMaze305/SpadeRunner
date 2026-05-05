@@ -1,4 +1,9 @@
+import base64
+import json
+import time
+import cv2
 import logging
+import os
 
 from spade import agent, behaviour
 from spade.message import Message
@@ -27,6 +32,9 @@ logger = logging.getLogger(__name__)
 class NavigatorAgent(agent.Agent):
     ENV_PREFIX = "NAVIGATOR"
 
+    def __init__(self, jid, password, verify_security = False):
+        super().__init__(jid, password, verify_security)
+
     class NavigateBehaviour(behaviour.CyclicBehaviour):
 
         # Pushes the path of the latest per-step path image to the logger agent
@@ -34,7 +42,19 @@ class NavigatorAgent(agent.Agent):
         async def notify_logger(self, image_path: str) -> None:
             msg = Message(to=TELEMETRY_JID)
             msg.set_metadata("performative", "inform")
-            msg.body = f"image {image_path}"
+            # Load image
+            img = cv2.imread(image_path)
+            _, buf = cv2.imencode(".jpg", img)
+            b64 = base64.b64encode(buf).decode("utf-8")
+
+            data = {
+                "type": "image_path",
+                "bot": str(self.agent.jid),
+                "ts": time.time(),
+                "data": b64
+            }
+
+            msg.body = json.dumps(data)
             await self.send(msg)
             logger.info(f"[NAV] notified {TELEMETRY_JID}: image {image_path}")
 
@@ -50,6 +70,8 @@ class NavigatorAgent(agent.Agent):
             logger.info(f"[ROBOT JID] {ROBOT_JID}")
 
             if request.body != "request path":
+                if request.body == "request display":
+                    self.agent.add_behaviour(self.agent.SendDisplay(str(request.sender.bare())))
                 logger.warning(f"[WARN] Unknown request: {request.body}")
                 return
 
