@@ -10,13 +10,13 @@ from agents.navigator.agent import NavigatorAgent
 from agents.camera_receiver.agent import CameraReceiverAgent
 from agents.navigator_request.agent import NavigationRequesterAgent
 from common.runner import start_agent_alphabot
+from common.config import *
 
 # Maps MODE value to the agent class
 AGENTS = {
-    # TODO: Update calibrator agent to be able to launch the calibration on 'requests'
-    #"calibrator": CalibratorAgent,
-    "navigator": NavigatorAgent,
-    "camera_test": CameraReceiverAgent,
+    CALIBRATOR_JID: CalibratorAgent,
+    NAVIGATOR_JID: NavigatorAgent,
+    CAMERA_JID: CameraReceiverAgent,
 }
 
 

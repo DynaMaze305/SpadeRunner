@@ -38,15 +38,10 @@ async def start_agent_alphabot(AgentClass, custom_jid=None, **kwargs):
     return agent
 
 async def start_agent(AgentClass, custom_jid=None, **kwargs):
-    """Starts an agent and returns it directly (no keepalive loop).
-
-    Reads <ENV_PREFIX>_USER and XMPP_PASSWORD from the env so each
-    agent can log in with its own XMPP account. Pass custom_jid to override
-    the derived JID (used to make one agent log in as another).
     """
-    prefix = AgentClass.ENV_PREFIX
-    user = os.getenv(f"{prefix}_USER")
-    agent_jid = custom_jid or f"{user}@{COORDINATOR_HOST}"
+    Starts an agent and returns it directly (no keepalive loop).
+    """
+    agent_jid = custom_jid
     agent_password = os.getenv(f"XMPP_PASSWORD")
 
     logger.info(f"Starting {AgentClass.__name__} as {agent_jid}...")
