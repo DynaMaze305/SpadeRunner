@@ -65,6 +65,15 @@ class PathPlanner:
                 if not points or points[-1] != point:
                     points.append(point)
                 protected_points.add(point)
+                if (
+                    index == 0
+                    and len(coarse_path) > 1
+                    and coarse_path[1] not in blocked_cells
+                ):
+                    center = self._cell_center(frame, cell)
+                    if points[-1] != center:
+                        points.append(center)
+                    protected_points.add(center)
                 index += 1
                 continue
 

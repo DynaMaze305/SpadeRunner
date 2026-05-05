@@ -10,7 +10,7 @@ from common.config import ARUCO_ANGLE_OFFSET
 # Tests construct a NavigatorConfig directly; production reads env via from_env().
 @dataclass(frozen=True)
 class NavigatorConfig:
-    target_cell: str = "A11"
+    target_cell: str = "C1"
     max_steps: int = 50
     max_bad_grid_retries: int = 5
 
@@ -27,8 +27,8 @@ class NavigatorConfig:
     grid_min_gap: int = 15
     hardcoded_grid_enabled: bool = True
     hardcoded_grid_x_fractions: tuple[float, ...] = (
-        0.025, 0.1277, 0.2105, 0.2932, 0.3760, 0.4586,
-        0.5414, 0.6240, 0.7068, 0.7895, 0.8723, 0.975,
+        0.025, 0.1077, 0.2105, 0.2932, 0.3760, 0.4586,
+        0.5414, 0.6240, 0.7068, 0.7895, 0.8923, 0.975,
     )
     hardcoded_grid_y_fractions: tuple[float, ...] = (
         0.05, 0.4, 0.667, 0.9,
@@ -48,7 +48,7 @@ class NavigatorConfig:
     # Cell width is 200 mm, average detected cell width is ~67.5 px -> ~2.96 mm/px.
     mm_per_pixel: float = 2.96
 
-    obstacle_avoidance_margin_px: int = 5
+    obstacle_avoidance_margin_px: int = 2
     robot_clearance_margin_px: int = 0
     obstacle_mini_grid_divisions: int = 5
     # Fraction of the computed distance actually sent to the robot per step.
