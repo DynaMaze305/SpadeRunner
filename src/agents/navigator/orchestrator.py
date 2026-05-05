@@ -27,6 +27,7 @@ from pathfinding.obstacle_avoider import ObstacleAvoider
 from pathfinding.pathfinding import obstacle_cells_from_frame
 from vision.camera import Camera
 
+from common.config import PAUSE_TIME
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ class NavigationOrchestrator:
         localizer: RobotLocalizationStep,
         planner: PathPlanner,
         converter: PathCommandConverter,
+        navigator: NavigatorAgent,
         executor,
         debug: NavigatorDebug | None = None,
         notify_logger: Callable[[str], Awaitable[None]] | None = None,
@@ -53,6 +55,7 @@ class NavigationOrchestrator:
         self.localizer = localizer
         self.planner = planner
         self.converter = converter
+        self.navigator_agent = navigator
         self.executor = executor
         self.debug = debug
         self.notify_logger = notify_logger
@@ -74,6 +77,8 @@ class NavigationOrchestrator:
 
         for step in range(cfg.max_steps):
             logger.info(f"\n========== STEP {step} ==========")
+            if self.navigator_agent.paused:
+                await asyncio.sleep(PAUSE_TIME)
 
             img_bytes = await self.photo_source("navigator")
             if img_bytes is None:

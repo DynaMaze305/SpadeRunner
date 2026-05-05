@@ -6,6 +6,8 @@
 
 import os
 
+PAUSE_TIME = 5
+
 COORDINATOR_HOST = os.getenv("XMPP_DOMAIN", "isc-coordinator2.lan")
 ROBOT_NUM = os.getenv("ROBOT_NUM", "1")
 ROBOT_FILTRE = f"alphabot2{ROBOT_NUM}-agent"
