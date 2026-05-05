@@ -29,56 +29,34 @@ if not debug_mode:
 from agents.calibrator.agent import CalibratorAgent
 from agents.navigator.agent import NavigatorAgent
 from agents.camera_receiver.agent import CameraReceiverAgent
-from agents.navigator_request.agent import NavigationRequesterAgent
-from agents.telemetry.agent import TelemetryAgent  # disabled: grafana/logger flow off
-from common.runner import run_agent, start_agent
+from agents.telemetry.agent import TelemetryAgent
+from common.runner import start_agent
 
 # Maps MODE value to the agent class
 AGENTS = {
     "calibrator": CalibratorAgent,
     "navigator": NavigatorAgent,
     "camera_test": CameraReceiverAgent,
-    "navigator_request": NavigationRequesterAgent,
-    "telemetry": TelemetryAgent,  # disabled: grafana/logger flow off
+    "telemetry": TelemetryAgent,
 }
 
 
 async def main():
-    # Reads the MODE env variable and looks up the agent class
-    mode = os.getenv("MODE", "calibrator")
-    if mode not in AGENTS:
-        logger.error(f"Unknown MODE '{mode}', valid modes: {list(AGENTS.keys())}")
-        return
-
-    logger.info(f"Running in {mode.upper()} mode")
+    logger.info(f"Running in Alphabot2 mode")
 
     active = []
+    for _, a in AGENTS.items():
+        active.append(await start_agent(a))
 
-    # starts the picked agent in the background (non-blocking)
-    primary = await start_agent(AGENTS[mode])
-    if primary:
-        active.append(primary)
+    logger.info("Agents started successfully")
 
-    # also starts the dashboard alongside (unless MODE was already telemetry)
-    if AGENTS[mode] is not TelemetryAgent:
-        dashboard = await start_agent(TelemetryAgent)
-        if dashboard:
-            active.append(dashboard)
-
-    # always keep the calibrator on standby so the dashboard can trigger it
-    if AGENTS[mode] is not CalibratorAgent:
-        calibrator = await start_agent(CalibratorAgent)
-        if calibrator:
-            active.append(calibrator)
-
-    logger.info(f"agents started: {[a.jid for a in active]}")
-
-    # keepalive: stops everything cleanly when any agent dies or on Ctrl+C
     try:
         while all(a.is_alive() for a in active):
             await asyncio.sleep(1)
     except KeyboardInterrupt:
         logger.info("Shutting down...")
+    except asyncio.CancelledError:
+        logger.warning("Main loop cancelled")
     finally:
         for a in active:
             await a.stop()
