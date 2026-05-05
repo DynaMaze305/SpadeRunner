@@ -105,9 +105,9 @@ class SelectedBotComponent(DashboardComponent):
 
     def update_js(self):
         return """
-            // ### Select Bot Component (update js) ###
-            if (msg.bot !== selectedBot) {
-                console.log("Not selelceted bot")
-                break;
-            }
+        // ### Select Bot Component (update js) ###
+        if (msg.bot !== selectedBot) {
+            console.log("Not selelceted bot")
+            return;
+        }
 """

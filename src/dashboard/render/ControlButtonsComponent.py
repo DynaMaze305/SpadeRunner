@@ -9,7 +9,7 @@ class ControlButtonsComponent(DashboardComponent):
         for btn in self.buttons:
             html += (
                 f'<button onclick="sendCommand('
-                f'{{command: \'{btn["command"]}\', target: \'{btn["target_jid"]}\'}})">'
+                f'{{type: \'button\', command: \'{btn["command"]}\', target: \'{btn["target_jid"]}\', value: \'\'}})">'
                 f'{btn["text"]}</button>'
             )
         html += "</div>"

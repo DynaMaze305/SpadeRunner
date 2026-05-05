@@ -68,5 +68,7 @@ class BatteryGaugeComponent(DashboardComponent):
     def update_js(self):
         return """
             // ### Battery Gauge Component (update js) ###
-            updateBattery(data.battery);
+            if (msg.type === "data") {
+                updateBattery(msg.values.battery);
+            }
         """

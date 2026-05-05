@@ -15,7 +15,7 @@ from agents.telemetry.telemetrystore import TelemetryStore
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("TelemetryAgent")
+logger = logging.getLogger(__name__)
 
 HTTP_PORT = 8080
 
@@ -69,7 +69,7 @@ class TelemetryAgent(agent.Agent):
                 return
 
             body = (msg.body or "").strip()
-            logger.info(f"[AGENT] XMPP message: {body}")
+            #logger.info(f"[AGENT] XMPP message: {body}")
 
             try:
                 payload = json.loads(body)
@@ -102,21 +102,40 @@ class TelemetryAgent(agent.Agent):
                 logger.error(f"[AGENT] Error from bot: {payload.get('message')}")
                 return
 
+            if msg_type == "image_path":
+                sender = str(msg.sender.bare())
+                logger.info(f"[AGENT] Receive image from {sender}")
+                if self.agent.selected_bot in sender:
+                    sample = {
+                        "type": "image_frame",
+                        "bot":  payload["bot"].split('-',1)[1].split('@')[0],
+                        "ts":   payload["ts"],
+                        "values": payload["data"]
+                    }
+                    await self.agent.dashboard.broadcast(sample)
+                else:
+                    logger.info(f"[AGENT] Not processing image received.")
+                return
+
             logger.warning(f"[AGENT] Unknown message type: {msg_type}")
             logger.warning(f"[AGENT] {msg}")
 
     class XMPPSendMessage(behaviour.OneShotBehaviour):
-        def __init__(self, cmd: str, target: str):
+        def __init__(self, cmd: str, target: str, value: str):
             super().__init__()
             self.cmd = cmd
             self.target = target
+            self.value = value
 
         async def run(self):
             logger.info(f"[AGENT] handle_command: {self.cmd}")
 
             msg = Message(to=self.target)
             msg.set_metadata("performative", "request")
-            msg.body = f"{self.cmd}"
+            if self.value == "":
+                msg.body = f"{self.cmd}"
+            else:
+                msg.body = f"{self.cmd} {self.value}"
             await self.send(msg)
             logger.info(f"[AGENT] Sent XMPP message: {msg}")
 
@@ -160,12 +179,12 @@ class TelemetryAgent(agent.Agent):
     def _store_sample(self, sample: dict):
         self.store.store_sample(sample)
 
-    async def handle_command(self, cmd: str, target: str):
+    async def handle_command(self, cmd: str, target: str, value: str = None):
         if "@" in target:
-            self.add_behaviour(self.XMPPSendMessage(cmd, target))
+            self.add_behaviour(self.XMPPSendMessage(cmd, target, value))
         else:
             target += f"-{self.selected_bot}@{COORDINATOR_HOST}"
-            self.add_behaviour(self.XMPPSendMessage(cmd, target))
+            self.add_behaviour(self.XMPPSendMessage(cmd, target, value))
 
     # ---------- setup ----------
     def set_selected_bot(self, bot):

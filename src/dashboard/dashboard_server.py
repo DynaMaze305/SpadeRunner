@@ -12,6 +12,8 @@ from dashboard.render.ControlButtonsComponent import ControlButtonsComponent
 from dashboard.render.ObstaclesComponent import ObstacleSensorsComponent
 from dashboard.render.MotorComponent import MotorComponent
 from dashboard.render.SelectBotComponent import SelectedBotComponent
+from dashboard.render.SliderComponent import SliderComponent
+from dashboard.render.DisplayComponent import ImageDisplayComponent
 
 
 XMPP_DOMAIN = os.environ.get("XMPP_DOMAIN", "prosody")
@@ -24,6 +26,7 @@ BUTTONS = [
     {"text": "Calibrate rotation", "target_jid": "calibrator", "command": "calibrate rotation"},
     {"text": "Calibrate distance", "target_jid": "calibrator", "command": "calibrate distance"},
     {"text": "Start Timer (mock)", "target_jid": TIMEKEEPER_JID, "command": "hello"},
+    {"text": "Buzzer", "target_jid": SENSORS_JID, "command": "buzz"},
 ]
 DIGITAL_GRAPH = [
     {"label": "Left", "data_label": "digital_2"},
@@ -35,6 +38,24 @@ SELECT_BOT = [
     {"label": "Bot 3", "bot_id": "alphabot23-agent"},
     {"label": "Bot 4", "bot_id": "alphabot24-agent"},
     {"label": "TEST", "bot_id": f"test"},
+]
+SLIDERS = [
+    {
+        "text": "Speed",
+        "target_jid": "bot_1",
+        "command": "set_speed",
+        "min_value": 0,
+        "max_value": 255,
+        "n_values": 256
+    },
+    {
+        "text": "Turn",
+        "target_jid": "bot_1",
+        "command": "set_turn",
+        "min_value": -100,
+        "max_value": 100,
+        "n_values": 201
+    }
 ]
 
 
@@ -51,28 +72,32 @@ class Dashboard:
         motor_right = MotorComponent("Right Moto", "motion_right_pwm", "motion_right_direction")
         buttons = ControlButtonsComponent(BUTTONS)
         digitals = DigitalGraphComponent(DIGITAL_GRAPH)
+        sliders = SliderComponent(SLIDERS)
+        display = ImageDisplayComponent()
         components = [
             PageComponent(),
             SelectedBotComponent(SELECT_BOT),
+            display,
             ObstacleSensorsComponent(),
             BatteryGaugeComponent(),
             motor_left,
             motor_right,
             buttons,
             AnalogGraphComponent(),
-            digitals
-
+            digitals,
+            sliders
         ]
 
-        css = "\n".join(c.render_css() for c in components)         # The css style of the component
-        js_script = "\n".join(c.render_js() for c in components)    # The script of the component including the update function
-        js_update = "\n".join(c.update_js() for c in components)    # The call to the update function
+        css = "".join(c.render_css() for c in components)         # The css style of the component
+        js_script = "".join(c.render_js() for c in components)    # The script of the component including the update function
+        js_update = "".join(c.update_js() for c in components)    # The call to the update function
 
         html_blocks = (
             row(
                 SelectedBotComponent(SELECT_BOT).render_html(),
                 BatteryGaugeComponent().render_html(),
             )
+            + display.render_html()
             + row(
                 motor_left.render_html(),
                 ObstacleSensorsComponent().render_html(),
@@ -83,6 +108,7 @@ class Dashboard:
                 AnalogGraphComponent().render_html(),
                 digitals.render_html()
             )
+            + sliders.render_html()
         )
         return f"""<html>
 <head>
@@ -115,6 +141,11 @@ ws.onmessage = (event) => {{
         return;
     }}
 
+{js_update}
+    if (msg.type === "data") {{
+        return;
+    }}
+
     switch (msg.type) {{
 
         case "register_ok":
@@ -127,16 +158,6 @@ ws.onmessage = (event) => {{
 
         case "error":
             console.error("Bot error:", msg.message);
-            break;
-
-        case "data":
-            const ts = msg.ts;
-            const data = msg.values;
-            // console.log(data)
-
-            document.getElementById("ts").innerText = "Timestamp: " + new Date(ts * 1000).toLocaleTimeString();
-
-            {js_update}
             break;
 
         default:
@@ -171,7 +192,7 @@ ws.onmessage = (event) => {{
             if msg.type == WSMsgType.TEXT:
                 data = json.loads(msg.data)
                 if "command" in data:
-                    await agent.handle_command(data["command"], data.get("target"))
+                    await agent.handle_command(data["command"], data["target"], data["value"])
 
         self.websockets.discard(ws)
         return ws
