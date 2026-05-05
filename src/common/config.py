@@ -28,7 +28,8 @@ CALIBRATOR_JID = f"calibrator-alphabot2{ROBOT_NUM}-agent@{COORDINATOR_HOST}"
 # Agent extern to the AlphaBot2-Pi
 TELEMETRY_JID = f"telemetry@{COORDINATOR_HOST}"
 CAMERA_JID = f"camera_agent@{COORDINATOR_HOST if COORDINATOR_HOST != 'prosody' else 'isc-coordinator2.lan'}"
-TIMEKEEPER_JID = f"timekeepre@{COORDINATOR_HOST if COORDINATOR_HOST != 'prosody' else 'isc-coordinator2.lan'}"
+TIMEKEEPER_JID = f"timekeeper@{COORDINATOR_HOST if COORDINATOR_HOST != 'prosody' else 'isc-coordinator2.lan'}"
+UR_JID = f"ur-agent@{COORDINATOR_HOST if COORDINATOR_HOST != 'prosody' else 'isc-coordinator2.lan'}"
 
 def agent_jid(user: str) -> str:
     return f"{user}@{COORDINATOR_HOST}"
