@@ -51,11 +51,19 @@ class NavigatorAgent(agent.Agent):
 
             if request.body == "penality":
                 self.agent.paused = True
+                self.inform_penality()
                 return
 
             if request.body == "request path" and self.agent.current_navigator is None:
                 self.agent.current_navigator = self.agent.NavigateBehaviour()
                 self.agent.add_behaviour(self.agent.current_navigator)
+
+        async def inform_penality(self):
+            msg = Message(to= ROBOT_JID)
+            msg.set_metadata("performative", "inform")
+            msg.set_metadata("emergency","penality")
+            msg.body = "penality"
+            await self.send(msg)
 
     class NavigateBehaviour(behaviour.OneShotBehaviour):
 
