@@ -25,6 +25,7 @@ BUTTONS = [
     {"text": "Calibrate ratio", "target_jid": "calibrator", "command": "calibrate ratio"},
     {"text": "Calibrate rotation", "target_jid": "calibrator", "command": "calibrate rotation"},
     {"text": "Calibrate distance", "target_jid": "calibrator", "command": "calibrate distance"},
+    {"text": "Penality", "target_jid": "navigator", "command": "penality"},
     {"text": "Start Timer (mock)", "target_jid": TIMEKEEPER_JID, "command": "hello"},
     {"text": "Buzzer", "target_jid": SENSORS_JID, "command": "buzz"},
 ]
