@@ -15,8 +15,8 @@ def detect_black_mask(image: np.ndarray) -> np.ndarray:
     # Convert BGR → LAB
     lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
 
-    lower_black = np.array([0, 0, 0])
-    upper_black = np.array([60, 255, 255])  # key: low L
+    lower_black = np.array([0, 120, 120])
+    upper_black = np.array([45, 135, 135])  # key: low L
 
     mask_black = cv2.inRange(lab, lower_black, upper_black)
 
@@ -29,20 +29,19 @@ def detect_black_mask(image: np.ndarray) -> np.ndarray:
 
 def extract_obstacles_from_mask(
     mask: np.ndarray,
-    min_area: int = 30,
-    max_area: int = 500,
+    min_area: int = 20,
+    max_area: int = 900,
     min_width: int = 6,
     min_height: int = 6,
-    max_width: int = 35,
-    max_height: int = 35,
-    min_fill_ratio: float = 0.35,
-    max_aspect_ratio: float = 1.8,
-    border_margin: int = 8,
+    max_width: int = 55,
+    max_height: int = 55,
+    min_fill_ratio: float = 0.15,
+    max_aspect_ratio: float = 4.0,
+    border_margin: int = 3,
 ) -> list[Box]:
 
     kernel = np.ones((3, 3), np.uint8)
-    mask_clean = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
-    mask_clean = cv2.morphologyEx(mask_clean, cv2.MORPH_CLOSE, kernel, iterations=1)
+    mask_clean = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
 
     contours, _ = cv2.findContours(
         mask_clean,
@@ -54,15 +53,15 @@ def extract_obstacles_from_mask(
     obstacles = []
 
     for cnt in contours:
-        area = cv2.contourArea(cnt)
         x, y, w, h = cv2.boundingRect(cnt)
+        mask_area = cv2.countNonZero(mask_clean[y : y + h, x : x + w])
 
         if x < border_margin or y < border_margin:
             continue
         if x + w > w_img - border_margin or y + h > h_img - border_margin:
             continue
 
-        if not (min_area <= area <= max_area):
+        if not (min_area <= mask_area <= max_area):
             continue
 
         if not (min_width <= w <= max_width and min_height <= h <= max_height):
@@ -72,7 +71,7 @@ def extract_obstacles_from_mask(
         if aspect > max_aspect_ratio:
             continue
 
-        fill_ratio = area / float(w * h)
+        fill_ratio = mask_area / float(w * h)
         if fill_ratio < min_fill_ratio:
             continue
 
