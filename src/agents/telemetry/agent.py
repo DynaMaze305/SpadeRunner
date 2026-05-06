@@ -176,6 +176,8 @@ class TelemetryAgent(agent.Agent):
             self.value = value
 
         async def run(self):
+            if self.agent.current_button is None:
+                self.agent.current_button = self.target
             logger.info(f"[AGENT] handle_command: {self.cmd}")
 
             msg = Message(to=self.target)
