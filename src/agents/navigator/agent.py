@@ -72,6 +72,13 @@ class NavigatorAgent(agent.Agent):
                 hardcoded_grid_enabled=cfg.hardcoded_grid_enabled,
                 hardcoded_grid_x_fractions=cfg.hardcoded_grid_x_fractions,
                 hardcoded_grid_y_fractions=cfg.hardcoded_grid_y_fractions,
+                obstacle_hardcoded_grid_enabled=cfg.obstacle_hardcoded_grid_enabled,
+                obstacle_hardcoded_grid_x_fractions=(
+                    cfg.obstacle_hardcoded_grid_x_fractions
+                ),
+                obstacle_hardcoded_grid_y_fractions=(
+                    cfg.obstacle_hardcoded_grid_y_fractions
+                ),
             )
             localizer = RobotLocalizationStep(angle_offset_deg=cfg.angle_offset_deg)
             planner = PathPlanner(

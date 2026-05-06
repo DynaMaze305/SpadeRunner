@@ -10,7 +10,7 @@ from common.config import ARUCO_ANGLE_OFFSET
 # Tests construct a NavigatorConfig directly; production reads env via from_env().
 @dataclass(frozen=True)
 class NavigatorConfig:
-    target_cell: str = "C1"
+    target_cell: str = "B11"
     max_steps: int = 50
     max_bad_grid_retries: int = 5
 
@@ -25,13 +25,20 @@ class NavigatorConfig:
 
     grid_threshold_ratio: float = 0.03
     grid_min_gap: int = 15
-    hardcoded_grid_enabled: bool = True
+    hardcoded_grid_enabled: bool = False
     hardcoded_grid_x_fractions: tuple[float, ...] = (
-        0.025, 0.1077, 0.2105, 0.2932, 0.3760, 0.4586,
-        0.5414, 0.6240, 0.7068, 0.7895, 0.8923, 0.975,
+        0.045, 0.1277, 0.2105, 0.2932, 0.3760, 0.4586,
+        0.5414, 0.6240, 0.7068, 0.7895, 0.8723, 0.955,
     )
     hardcoded_grid_y_fractions: tuple[float, ...] = (
         0.05, 0.4, 0.667, 0.9,
+    )
+    obstacle_hardcoded_grid_enabled: bool = True
+    obstacle_hardcoded_grid_x_fractions: tuple[float, ...] = (
+        hardcoded_grid_x_fractions
+    )
+    obstacle_hardcoded_grid_y_fractions: tuple[float, ...] = (
+        hardcoded_grid_y_fractions
     )
 
     lookahead: int = 2
@@ -117,6 +124,18 @@ class NavigatorConfig:
             hardcoded_grid_y_fractions=cls._env_float_tuple(
                 "NAVIGATOR_HARDCODED_GRID_Y_FRACTIONS",
                 cls.hardcoded_grid_y_fractions,
+            ),
+            obstacle_hardcoded_grid_enabled=cls._env_bool(
+                "NAVIGATOR_OBSTACLE_HARDCODED_GRID_ENABLED",
+                cls.obstacle_hardcoded_grid_enabled,
+            ),
+            obstacle_hardcoded_grid_x_fractions=cls._env_float_tuple(
+                "NAVIGATOR_OBSTACLE_HARDCODED_GRID_X_FRACTIONS",
+                cls.obstacle_hardcoded_grid_x_fractions,
+            ),
+            obstacle_hardcoded_grid_y_fractions=cls._env_float_tuple(
+                "NAVIGATOR_OBSTACLE_HARDCODED_GRID_Y_FRACTIONS",
+                cls.obstacle_hardcoded_grid_y_fractions,
             ),
             lookahead=int(os.getenv("NAVIGATOR_LOOKAHEAD", str(cls.lookahead))),
             photos_dir=os.getenv("NAVIGATOR_PHOTOS_DIR", cls.photos_dir),

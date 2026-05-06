@@ -15,8 +15,8 @@ def detect_black_mask(image: np.ndarray) -> np.ndarray:
     # Convert BGR → LAB
     lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
 
-    lower_black = np.array([0, 0, 0])
-    upper_black = np.array([60, 255, 255])  # key: low L
+    lower_black = np.array([0, 120, 120])
+    upper_black = np.array([45, 135, 135])  # key: low L
 
     mask_black = cv2.inRange(lab, lower_black, upper_black)
 
@@ -29,7 +29,7 @@ def detect_black_mask(image: np.ndarray) -> np.ndarray:
 
 def extract_obstacles_from_mask(
     mask: np.ndarray,
-    min_area: int = 30,
+    min_area: int = 10,
     max_area: int = 500,
     min_width: int = 6,
     min_height: int = 6,

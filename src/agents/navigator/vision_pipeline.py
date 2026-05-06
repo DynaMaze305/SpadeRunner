@@ -53,6 +53,9 @@ class MazeVisionPipeline:
         hardcoded_grid_enabled: bool = False,
         hardcoded_grid_x_fractions: tuple[float, ...] = (),
         hardcoded_grid_y_fractions: tuple[float, ...] = (),
+        obstacle_hardcoded_grid_enabled: bool = True,
+        obstacle_hardcoded_grid_x_fractions: tuple[float, ...] = (),
+        obstacle_hardcoded_grid_y_fractions: tuple[float, ...] = (),
     ) -> None:
         self.threshold_ratio = threshold_ratio
         self.min_gap = min_gap
@@ -62,6 +65,9 @@ class MazeVisionPipeline:
         self.hardcoded_grid_enabled = hardcoded_grid_enabled
         self.hardcoded_grid_x_fractions = hardcoded_grid_x_fractions
         self.hardcoded_grid_y_fractions = hardcoded_grid_y_fractions
+        self.obstacle_hardcoded_grid_enabled = obstacle_hardcoded_grid_enabled
+        self.obstacle_hardcoded_grid_x_fractions = obstacle_hardcoded_grid_x_fractions
+        self.obstacle_hardcoded_grid_y_fractions = obstacle_hardcoded_grid_y_fractions
 
         self.camera = Camera()
         self.cropper = ColorDetectorImageCropper()
@@ -100,6 +106,20 @@ class MazeVisionPipeline:
         y_lines: list[int] = grid_result["y_lines"]
         if self.hardcoded_grid_enabled:
             x_lines, y_lines = self._hardcoded_grid_lines(wall_clean.shape)
+
+        if self.obstacle_hardcoded_grid_enabled:
+            obstacle_x_lines, obstacle_y_lines = self._hardcoded_grid_lines(
+                wall_clean.shape,
+                x_fractions=self.obstacle_hardcoded_grid_x_fractions,
+                y_fractions=self.obstacle_hardcoded_grid_y_fractions,
+            )
+            obstacles = self._remap_boxes_between_grids(
+                obstacles,
+                source_x_lines=obstacle_x_lines,
+                source_y_lines=obstacle_y_lines,
+                target_x_lines=x_lines,
+                target_y_lines=y_lines,
+            )
 
         n_rows = max(0, len(y_lines) - 1)
         n_cols = max(0, len(x_lines) - 1)
@@ -172,18 +192,77 @@ class MazeVisionPipeline:
     def _hardcoded_grid_lines(
         self,
         shape: tuple[int, ...],
+        x_fractions: tuple[float, ...] | None = None,
+        y_fractions: tuple[float, ...] | None = None,
     ) -> tuple[list[int], list[int]]:
         h, w = shape[:2]
-        x_fractions = self.hardcoded_grid_x_fractions or self._uniform_fractions(
+        resolved_x_fractions = x_fractions or self.hardcoded_grid_x_fractions
+        resolved_y_fractions = y_fractions or self.hardcoded_grid_y_fractions
+        resolved_x_fractions = resolved_x_fractions or self._uniform_fractions(
             self.expected_cols
         )
-        y_fractions = self.hardcoded_grid_y_fractions or self._uniform_fractions(
+        resolved_y_fractions = resolved_y_fractions or self._uniform_fractions(
             self.expected_rows
         )
         return (
-            self._fraction_lines(x_fractions, w),
-            self._fraction_lines(y_fractions, h),
+            self._fraction_lines(resolved_x_fractions, w),
+            self._fraction_lines(resolved_y_fractions, h),
         )
+
+    def _remap_boxes_between_grids(
+        self,
+        boxes: list[tuple[int, int, int, int]],
+        source_x_lines: list[int],
+        source_y_lines: list[int],
+        target_x_lines: list[int],
+        target_y_lines: list[int],
+    ) -> list[tuple[int, int, int, int]]:
+        if not boxes:
+            return boxes
+        if (
+            len(source_x_lines) < 2
+            or len(source_y_lines) < 2
+            or len(target_x_lines) < 2
+            or len(target_y_lines) < 2
+        ):
+            return boxes
+
+        return [
+            (
+                self._remap_grid_coordinate(x1, source_x_lines, target_x_lines),
+                self._remap_grid_coordinate(y1, source_y_lines, target_y_lines),
+                self._remap_grid_coordinate(x2, source_x_lines, target_x_lines),
+                self._remap_grid_coordinate(y2, source_y_lines, target_y_lines),
+            )
+            for x1, y1, x2, y2 in boxes
+        ]
+
+    @staticmethod
+    def _remap_grid_coordinate(
+        value: int,
+        source_lines: list[int],
+        target_lines: list[int],
+    ) -> int:
+        max_interval = min(len(source_lines), len(target_lines)) - 2
+        for index in range(max_interval + 1):
+            source_start = source_lines[index]
+            source_end = source_lines[index + 1]
+            if source_start <= value <= source_end:
+                span = max(1, source_end - source_start)
+                fraction = (value - source_start) / span
+                target_start = target_lines[index]
+                target_end = target_lines[index + 1]
+                return int(
+                    round(target_start + fraction * (target_end - target_start))
+                )
+
+        source_start = source_lines[0]
+        source_end = source_lines[-1]
+        span = max(1, source_end - source_start)
+        fraction = (value - source_start) / span
+        target_start = target_lines[0]
+        target_end = target_lines[-1]
+        return int(round(target_start + fraction * (target_end - target_start)))
 
     @staticmethod
     def _uniform_fractions(cells: int) -> tuple[float, ...]:
