@@ -91,6 +91,10 @@ class MiniGridPlanner:
             start = self._nearest_unblocked_node(start, blocked, cell_set, frame)
             if start is None:
                 return None
+        if goal in blocked:
+            goal = self._nearest_unblocked_node(goal, blocked, {goal_cell}, frame)
+            if goal is None:
+                return None
 
         node_path = self._shortest_node_path(start, goal, blocked, cell_set, frame)
         if node_path is None:

@@ -11,7 +11,7 @@ from common.config import ARUCO_ANGLE_OFFSET
 @dataclass(frozen=True)
 class NavigatorConfig:
     target_cell: str = "B11"
-    max_steps: int = 50
+    max_steps: int = 1000
     max_bad_grid_retries: int = 5
 
     expected_rows: int = 3

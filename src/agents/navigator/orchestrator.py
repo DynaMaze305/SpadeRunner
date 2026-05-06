@@ -218,7 +218,7 @@ class NavigationOrchestrator:
 
             # Proximity check: count as reached if robot is within the configured
             # radius from the target cell center, even if still labelled in a neighbour cell.
-            target_center = self._cell_center_local(cfg.target_cell, frame)
+            target_center = self._cell_center_local(self.target_cell, frame)
             robot_local_pos_check = self._robot_local_position(frame, robot)
             distance_to_target_mm = None
             if target_center is not None:
@@ -247,20 +247,20 @@ class NavigationOrchestrator:
                 )
 
             if target_center is None:
-                logger.error(f"[ERROR] Target cell {cfg.target_cell} has no center")
+                logger.error(f"[ERROR] Target cell {self.target_cell} has no center")
                 self._save_debug(step, image=frame.image, frame=frame, robot_pose=robot, path=None)
                 return NavigationResult(
                     NavigationOutcome.FAILED_NO_PATH,
                     last_cell=current_cell,
                     steps_taken=step,
-                    message=f"invalid target cell {cfg.target_cell}",
+                    message=f"invalid target cell {self.target_cell}",
                 )
 
             robot_local_pos = self._robot_local_position(frame, robot)
             point_path = self.planner.plan_points(
                 frame=frame,
                 start_cell=current_cell,
-                end_cell=cfg.target_cell,
+                end_cell=self.target_cell,
                 start_point=robot_local_pos,
                 goal_point=target_center,
             )
