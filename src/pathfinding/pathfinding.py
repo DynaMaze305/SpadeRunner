@@ -9,6 +9,7 @@ def solve_from_frame(
     frame,
     start_cell: str,
     end_cell: str,
+    avoid_obstacles: bool = True,
 ) -> list[str] | None:
     if frame.n_rows <= 0 or frame.n_cols <= 0:
         return None
@@ -16,12 +17,16 @@ def solve_from_frame(
         return None
 
     solver = MazeSolver()
-    blocked_cells = obstacle_cells_from_frame(
-        frame,
-        ignored_cells={start_cell, end_cell},
+    blocked_cells = (
+        obstacle_cells_from_frame(
+            frame,
+            ignored_cells={start_cell, end_cell},
+        )
+        if avoid_obstacles
+        else set()
     )
 
-    if blocked_cells:
+    if avoid_obstacles and blocked_cells:
         obstacle_aware_path = solver.shortest_path(
             grid_walls=frame.grid_walls,
             start_cell=start_cell,

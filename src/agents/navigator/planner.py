@@ -32,16 +32,35 @@ class PathPlanner:
         if self.mini_grid_planner is None:
             return None
 
-        coarse_path = self.plan(frame, start_cell, end_cell)
-        if coarse_path is None:
-            return None
+        for coarse_path in self._candidate_coarse_paths(frame, start_cell, end_cell):
+            point_path = self._points_from_coarse_path(
+                frame=frame,
+                coarse_path=coarse_path,
+                start_point=start_point,
+                goal_point=goal_point,
+            )
+            if point_path is not None:
+                return point_path
 
-        return self._points_from_coarse_path(
-            frame=frame,
-            coarse_path=coarse_path,
-            start_point=start_point,
-            goal_point=goal_point,
-        )
+        return None
+
+    def _candidate_coarse_paths(
+        self,
+        frame,
+        start_cell: str,
+        end_cell: str,
+    ) -> list[list[str]]:
+        paths: list[list[str]] = []
+        for avoid_obstacles in (False, True):
+            path = solve_from_frame(
+                frame,
+                start_cell,
+                end_cell,
+                avoid_obstacles=avoid_obstacles,
+            )
+            if path is not None and path not in paths:
+                paths.append(path)
+        return paths
 
     def _points_from_coarse_path(
         self,
@@ -50,10 +69,7 @@ class PathPlanner:
         start_point: tuple[int, int],
         goal_point: tuple[int, int],
     ) -> list[tuple[int, int]] | None:
-        blocked_cells = obstacle_cells_from_frame(
-            frame,
-            ignored_cells={coarse_path[0], coarse_path[-1]},
-        )
+        blocked_cells = obstacle_cells_from_frame(frame)
         points: list[tuple[int, int]] = []
         protected_points: set[tuple[int, int]] = set()
         index = 0
@@ -94,13 +110,25 @@ class PathPlanner:
                 goal_point=corridor_goal,
             )
             if not mini_points:
+                expanded_cells = self._expanded_corridor_cells(frame, corridor_cells)
+                if expanded_cells != corridor_cells:
+                    mini_points = self.mini_grid_planner.plan_cell_sequence(
+                        frame=frame,
+                        cells=expanded_cells,
+                        start_point=corridor_start,
+                        goal_point=corridor_goal,
+                    )
+            if not mini_points:
                 return None
 
             for point in mini_points:
                 if not points or points[-1] != point:
                     points.append(point)
 
-            index = after_index
+            if coarse_path[after_index] in blocked_cells:
+                index = after_index + 1
+            else:
+                index = after_index
 
         if not blocked_cells:
             return points
@@ -134,6 +162,36 @@ class PathPlanner:
         if entry is None or bounds is None:
             return self._cell_center(frame, to_cell)
         return self.mini_grid_planner._mini_cell_center(bounds, entry)
+
+    def _expanded_corridor_cells(
+        self,
+        frame,
+        corridor_cells: list[str],
+        padding: int = 1,
+    ) -> list[str]:
+        if self.mini_grid_planner is None:
+            return corridor_cells
+
+        rcs = [
+            self.mini_grid_planner._cell_rc(cell)
+            for cell in corridor_cells
+        ]
+        rcs = [rc for rc in rcs if rc is not None]
+        if not rcs:
+            return corridor_cells
+
+        min_row = max(0, min(row for row, _ in rcs) - padding)
+        max_row = min(frame.n_rows - 1, max(row for row, _ in rcs) + padding)
+        min_col = max(0, min(col for _, col in rcs) - padding)
+        max_col = min(frame.n_cols - 1, max(col for _, col in rcs) + padding)
+
+        cells = []
+        for row in range(min_row, max_row + 1):
+            for col in range(min_col, max_col + 1):
+                cell = self.mini_grid_planner._rc_cell(row, col)
+                if cell is not None:
+                    cells.append(cell)
+        return cells
 
     @staticmethod
     def _simplify_axis_aligned_points(
