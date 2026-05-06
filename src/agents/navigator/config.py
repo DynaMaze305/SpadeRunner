@@ -20,8 +20,10 @@ class NavigatorConfig:
     move_distance: float = 200.0
     move_pwm: int = 15
     rotation_pwm: int = 15
-    ratio: float = 0.9
-    rotation_ratio: float = 1.05
+    # 0.0 means "use the bot's calibrated ratio". Set non-zero to force an
+    # override (useful for testing, but not for production navigation).
+    ratio: float = 0.0
+    rotation_ratio: float = 0.0
 
     grid_threshold_ratio: float = 0.03
     grid_min_gap: int = 15
