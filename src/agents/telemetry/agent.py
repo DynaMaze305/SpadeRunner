@@ -176,11 +176,6 @@ class TelemetryAgent(agent.Agent):
             self.value = value
 
         async def run(self):
-            if self.agent.current_button is None:
-                self.agent.current_button = self.target
-            else:
-                logger.info("[AGENT] handle_command: Error command already running")
-                return
             logger.info(f"[AGENT] handle_command: {self.cmd}")
 
             msg = Message(to=self.target)

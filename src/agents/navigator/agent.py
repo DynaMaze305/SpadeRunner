@@ -140,7 +140,7 @@ class NavigatorAgent(agent.Agent):
             msg = Message(to= ROBOT_JID)
             msg.set_metadata("performative", "inform")
             msg.set_metadata("emergency","penality")
-            msg.body = "penality"
+            msg.body = "obstacles penality"
             await self.send(msg)
             self.agent.add_behaviour(self.agent.PenaltityTimer())
 
@@ -158,7 +158,7 @@ class NavigatorAgent(agent.Agent):
             r1, g1, b1 = color_to_rgb(start_color)
             r2, g2, b2 = color_to_rgb(end_color)
 
-            msg = Message(to=SENSORS_JID)
+            msg = Message(to=PICAMERA_JID)
             msg.set_metadata("performative", "request")
             msg.body = f"leds 1 {r1} {g1} {b1} 2 {r2} {g2} {b2}"
             await self.send(msg)
