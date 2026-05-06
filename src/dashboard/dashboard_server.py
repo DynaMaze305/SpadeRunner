@@ -29,7 +29,7 @@ BUTTONS = [
     {"text": "Penality", "target_jid": "navigator", "command": "penality"},
     {"text": "Init Race", "target_jid": "navigator", "command": "init_race"},
     {"text": "Ready Race", "target_jid": "navigator", "command": "ready_to_race"},
-    {"text": "Buzzer", "target_jid": SENSORS_JID, "command": "buzz"},
+    #{"text": "Buzzer", "target_jid": "sensors", "command": "buzz"},
 ]
 DIGITAL_GRAPH = [
     {"label": "Left", "data_label": "digital_2"},

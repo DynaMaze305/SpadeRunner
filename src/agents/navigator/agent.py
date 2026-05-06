@@ -53,6 +53,7 @@ class NavigatorAgent(agent.Agent):
     def __init__(self, jid, password, verify_security = False):
         super().__init__(jid, password, verify_security)
         self.current_navigator = None
+        self.current_requester = None
         self.racing = False
         self.racing_ready = False
         self.paired = False
@@ -76,6 +77,7 @@ class NavigatorAgent(agent.Agent):
 
             if request.body == "request path" and self.agent.current_navigator is None:
                 self.agent.current_navigator = self.agent.NavigateBehaviour()
+                self.agent.current_requester = str(request.sender.bare())
                 self.agent.add_behaviour(self.agent.current_navigator)
                 return
             
@@ -87,6 +89,7 @@ class NavigatorAgent(agent.Agent):
             if request.body.startswith("paired ") and self.agent.racing and not self.agent.racing_ready:
                 self.agent.paired = True
                 await self.update_leds(request.body.split(' ', 1)[1])
+                await self.confirm_telemetry()
                 return
             
             # if request.body.lower().startswith("executed command:") and self.agent.racing and self.agent.paired:
@@ -96,8 +99,9 @@ class NavigatorAgent(agent.Agent):
                 await self.ready_to_race()
                 return
             
-            if request.body == "Go!!" and self.agent.racing_ready:
+            if request.body == "Go!!" and self.agent.racing_ready and self.agent.current_navigator is not None:
                 self.agent.current_navigator = self.agent.NavigateBehaviour()
+                self.agent.current_requester = str(request.sender.bare())
                 self.agent.add_behaviour(self.agent.current_navigator)
                 return
 
@@ -118,6 +122,16 @@ class NavigatorAgent(agent.Agent):
                 await self.send_race_time(request.body.split(': ',1)[1])
                 return
 
+            if request.body.startswith("Pairing failed:"):
+                if self.agent.current_navigator is not None:
+                    self.agent.current_navigator = None
+                self.agent.racing = False
+                self.agent.racing_ready = False
+                self.agent.paired = False
+                # The race is finished! Your race time is: 24.908s
+                await self.confirm_telemetry()
+                return
+
             return
 
         async def inform_penality(self):
@@ -127,6 +141,7 @@ class NavigatorAgent(agent.Agent):
             msg.set_metadata("emergency","penality")
             msg.body = "penality"
             await self.send(msg)
+            self.agent.add_behaviour(self.agent.PenaltityTimer())
 
         async def init_race(self):
             logger.info("Init race!")
@@ -145,6 +160,13 @@ class NavigatorAgent(agent.Agent):
             msg = Message(to=SENSORS_JID)
             msg.set_metadata("performative", "request")
             msg.body = f"leds 1 {r1} {g1} {b1} 2 {r2} {g2} {b2}"
+            await self.send(msg)
+
+        async def confirm_telemetry(self):
+            logger.info("Confirm telemetry")
+            msg = Message(to=TELEMETRY_JID)
+            msg.set_metadata("performative", "inform")
+            msg.body = "race step done"
             await self.send(msg)
 
         async def ready_to_race(self):
@@ -177,6 +199,7 @@ class NavigatorAgent(agent.Agent):
                 "data": {"race_time": time}
             })
             await self.send(msg)
+            self.confirm_telemetry()
 
     class NavigateBehaviour(behaviour.OneShotBehaviour):
         async def on_start(self):
@@ -261,7 +284,7 @@ class NavigatorAgent(agent.Agent):
                 f"steps={result.steps_taken} last_cell={result.last_cell}"
             )
 
-            reply = Message(to=ROBOT_JID)
+            reply = Message(to=self.agent.current_requester)
             reply.set_metadata("performative", "response")
             reply.set_metadata("outcome", result.outcome.name)
             reply.body = (
@@ -273,6 +296,16 @@ class NavigatorAgent(agent.Agent):
         
         async def on_end(self):
             self.agent.current_navigator = None
+
+
+    class PenaltityTimer(behaviour.OneShotBehaviour):
+        async def run(self):
+            await asyncio.sleep(PAUSE_TIME)
+            logger.info("Penality navigator")
+            msg = Message(to=TELEMETRY_JID)
+            msg.set_metadata("performative", "inform")
+            msg.body = "penality done"
+            await self.send(msg)
 
     async def setup(self):
         self.cfg = NavigatorConfig.from_env()
