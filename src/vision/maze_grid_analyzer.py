@@ -49,7 +49,7 @@ class MazeGridAnalyzer:
         x_lines: list[int],
         y_lines: list[int],
         threshold: int = 100,
-        band: int = 2,
+        band: int = 24,
     ) -> dict[str, dict[str, bool]]:
         # Compute maze dimensions from detected grid lines
         n_rows, n_cols = self.get_grid_size(x_lines, y_lines)

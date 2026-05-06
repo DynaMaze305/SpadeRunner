@@ -48,10 +48,26 @@ class MazeVisionPipeline:
         threshold_ratio: float = 0.03,
         min_gap: int = 15,
         wall_threshold: int = 100,
+        expected_rows: int = 3,
+        expected_cols: int = 11,
+        hardcoded_grid_enabled: bool = False,
+        hardcoded_grid_x_fractions: tuple[float, ...] = (),
+        hardcoded_grid_y_fractions: tuple[float, ...] = (),
+        obstacle_hardcoded_grid_enabled: bool = True,
+        obstacle_hardcoded_grid_x_fractions: tuple[float, ...] = (),
+        obstacle_hardcoded_grid_y_fractions: tuple[float, ...] = (),
     ) -> None:
         self.threshold_ratio = threshold_ratio
         self.min_gap = min_gap
         self.wall_threshold = wall_threshold
+        self.expected_rows = expected_rows
+        self.expected_cols = expected_cols
+        self.hardcoded_grid_enabled = hardcoded_grid_enabled
+        self.hardcoded_grid_x_fractions = hardcoded_grid_x_fractions
+        self.hardcoded_grid_y_fractions = hardcoded_grid_y_fractions
+        self.obstacle_hardcoded_grid_enabled = obstacle_hardcoded_grid_enabled
+        self.obstacle_hardcoded_grid_x_fractions = obstacle_hardcoded_grid_x_fractions
+        self.obstacle_hardcoded_grid_y_fractions = obstacle_hardcoded_grid_y_fractions
 
         self.camera = Camera()
         self.cropper = ColorDetectorImageCropper()
@@ -88,6 +104,22 @@ class MazeVisionPipeline:
         )
         x_lines: list[int] = grid_result["x_lines"]
         y_lines: list[int] = grid_result["y_lines"]
+        if self.hardcoded_grid_enabled:
+            x_lines, y_lines = self._hardcoded_grid_lines(wall_clean.shape)
+
+        if self.obstacle_hardcoded_grid_enabled:
+            obstacle_x_lines, obstacle_y_lines = self._hardcoded_grid_lines(
+                wall_clean.shape,
+                x_fractions=self.obstacle_hardcoded_grid_x_fractions,
+                y_fractions=self.obstacle_hardcoded_grid_y_fractions,
+            )
+            obstacles = self._remap_boxes_between_grids(
+                obstacles,
+                source_x_lines=obstacle_x_lines,
+                source_y_lines=obstacle_y_lines,
+                target_x_lines=x_lines,
+                target_y_lines=y_lines,
+            )
 
         n_rows = max(0, len(y_lines) - 1)
         n_cols = max(0, len(x_lines) - 1)
@@ -118,10 +150,10 @@ class MazeVisionPipeline:
         )
 
     # Fast path used after the maze has been analyzed once: only decodes the new
-    # image and re-crops it using the cached crop_bbox. Walls, grid lines and the
-    # walls dict are reused from `cached` since the maze itself is static for the
-    # session. Callers should validate grid size on the full-pipeline output and
-    # only pass a successful frame in here.
+    # image and re-crops it using the cached crop_bbox. Walls, grid lines, the
+    # walls dict, and the obstacle map are reused from `cached` since the maze
+    # itself is static for the session. Callers should validate grid size on the
+    # full-pipeline output and only pass a successful frame in here.
     def analyze_with_cached_maze(
         self,
         image_bytes: bytes | None,
@@ -141,10 +173,6 @@ class MazeVisionPipeline:
         # New maze dict: refreshed `cropped` slice, every other field reused.
         maze = dict(cached.maze)
         maze["cropped"] = cropped
-        obstacle_mask, obstacles, robot_exclusions = detect_obstacles(
-            cropped,
-            aruco_detector=self.aruco,
-        )
 
         return VisionFrame(
             image=image,
@@ -156,7 +184,94 @@ class MazeVisionPipeline:
             n_rows=cached.n_rows,
             n_cols=cached.n_cols,
             grid_walls=cached.grid_walls,
-            obstacle_mask=obstacle_mask,
-            obstacles=obstacles,
-            obstacle_robot_exclusions=robot_exclusions,
+            obstacle_mask=cached.obstacle_mask,
+            obstacles=cached.obstacles,
+            obstacle_robot_exclusions=cached.obstacle_robot_exclusions,
         )
+
+    def _hardcoded_grid_lines(
+        self,
+        shape: tuple[int, ...],
+        x_fractions: tuple[float, ...] | None = None,
+        y_fractions: tuple[float, ...] | None = None,
+    ) -> tuple[list[int], list[int]]:
+        h, w = shape[:2]
+        resolved_x_fractions = x_fractions or self.hardcoded_grid_x_fractions
+        resolved_y_fractions = y_fractions or self.hardcoded_grid_y_fractions
+        resolved_x_fractions = resolved_x_fractions or self._uniform_fractions(
+            self.expected_cols
+        )
+        resolved_y_fractions = resolved_y_fractions or self._uniform_fractions(
+            self.expected_rows
+        )
+        return (
+            self._fraction_lines(resolved_x_fractions, w),
+            self._fraction_lines(resolved_y_fractions, h),
+        )
+
+    def _remap_boxes_between_grids(
+        self,
+        boxes: list[tuple[int, int, int, int]],
+        source_x_lines: list[int],
+        source_y_lines: list[int],
+        target_x_lines: list[int],
+        target_y_lines: list[int],
+    ) -> list[tuple[int, int, int, int]]:
+        if not boxes:
+            return boxes
+        if (
+            len(source_x_lines) < 2
+            or len(source_y_lines) < 2
+            or len(target_x_lines) < 2
+            or len(target_y_lines) < 2
+        ):
+            return boxes
+
+        return [
+            (
+                self._remap_grid_coordinate(x1, source_x_lines, target_x_lines),
+                self._remap_grid_coordinate(y1, source_y_lines, target_y_lines),
+                self._remap_grid_coordinate(x2, source_x_lines, target_x_lines),
+                self._remap_grid_coordinate(y2, source_y_lines, target_y_lines),
+            )
+            for x1, y1, x2, y2 in boxes
+        ]
+
+    @staticmethod
+    def _remap_grid_coordinate(
+        value: int,
+        source_lines: list[int],
+        target_lines: list[int],
+    ) -> int:
+        max_interval = min(len(source_lines), len(target_lines)) - 2
+        for index in range(max_interval + 1):
+            source_start = source_lines[index]
+            source_end = source_lines[index + 1]
+            if source_start <= value <= source_end:
+                span = max(1, source_end - source_start)
+                fraction = (value - source_start) / span
+                target_start = target_lines[index]
+                target_end = target_lines[index + 1]
+                return int(
+                    round(target_start + fraction * (target_end - target_start))
+                )
+
+        source_start = source_lines[0]
+        source_end = source_lines[-1]
+        span = max(1, source_end - source_start)
+        fraction = (value - source_start) / span
+        target_start = target_lines[0]
+        target_end = target_lines[-1]
+        return int(round(target_start + fraction * (target_end - target_start)))
+
+    @staticmethod
+    def _uniform_fractions(cells: int) -> tuple[float, ...]:
+        cells = max(1, cells)
+        return tuple(index / cells for index in range(cells + 1))
+
+    @staticmethod
+    def _fraction_lines(fractions: tuple[float, ...], size: int) -> list[int]:
+        return [
+            int(round(min(max(fraction, 0.0), 1.0) * size))
+            for fraction in fractions
+        ]

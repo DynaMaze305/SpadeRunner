@@ -10,7 +10,7 @@ from common.config import ARUCO_ANGLE_OFFSET
 # Tests construct a NavigatorConfig directly; production reads env via from_env().
 @dataclass(frozen=True)
 class NavigatorConfig:
-    target_cell: str = "C1"
+    target_cell: str = "B11"
     max_steps: int = 50
     max_bad_grid_retries: int = 5
 
@@ -27,6 +27,21 @@ class NavigatorConfig:
 
     grid_threshold_ratio: float = 0.03
     grid_min_gap: int = 15
+    hardcoded_grid_enabled: bool = False
+    hardcoded_grid_x_fractions: tuple[float, ...] = (
+        0.045, 0.1277, 0.2105, 0.2932, 0.3760, 0.4586,
+        0.5414, 0.6240, 0.7068, 0.7895, 0.8723, 0.955,
+    )
+    hardcoded_grid_y_fractions: tuple[float, ...] = (
+        0.05, 0.4, 0.667, 0.9,
+    )
+    obstacle_hardcoded_grid_enabled: bool = True
+    obstacle_hardcoded_grid_x_fractions: tuple[float, ...] = (
+        hardcoded_grid_x_fractions
+    )
+    obstacle_hardcoded_grid_y_fractions: tuple[float, ...] = (
+        hardcoded_grid_y_fractions
+    )
 
     lookahead: int = 2
 
@@ -42,17 +57,33 @@ class NavigatorConfig:
     # Cell width is 200 mm, average detected cell width is ~67.5 px -> ~2.96 mm/px.
     mm_per_pixel: float = 2.96
 
-    obstacle_avoidance_margin_px: int = 5
+    obstacle_avoidance_margin_px: int = 2
     robot_clearance_margin_px: int = 0
-    contour_demo_padding_px: int = 25
-    contour_waypoint_reached_px: int = 8
-
+    obstacle_mini_grid_divisions: int = 5
     # Fraction of the computed distance actually sent to the robot per step.
     # 1.0 = full move, 0.5 = half move (vision re-localizes between halves), etc.
     move_distance_fraction: float = 1.0
 
     # Radius around the target cell center that still counts as "reached" (mm).
-    cell_reached_radius_mm: float = 15.0
+    cell_reached_radius_mm: float = 15.0 #hack
+
+    @staticmethod
+    def _env_bool(name: str, default: bool) -> bool:
+        value = os.getenv(name)
+        if value is None:
+            return default
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+
+    @staticmethod
+    def _env_float_tuple(name: str, default: tuple[float, ...]) -> tuple[float, ...]:
+        value = os.getenv(name)
+        if value is None or not value.strip():
+            return default
+        return tuple(
+            float(part.strip())
+            for part in value.split(",")
+            if part.strip()
+        )
 
     @classmethod
     def from_env(cls) -> "NavigatorConfig":
@@ -84,6 +115,30 @@ class NavigatorConfig:
             grid_min_gap=int(
                 os.getenv("NAVIGATOR_GRID_MIN_GAP", str(cls.grid_min_gap))
             ),
+            hardcoded_grid_enabled=cls._env_bool(
+                "NAVIGATOR_HARDCODED_GRID_ENABLED",
+                cls.hardcoded_grid_enabled,
+            ),
+            hardcoded_grid_x_fractions=cls._env_float_tuple(
+                "NAVIGATOR_HARDCODED_GRID_X_FRACTIONS",
+                cls.hardcoded_grid_x_fractions,
+            ),
+            hardcoded_grid_y_fractions=cls._env_float_tuple(
+                "NAVIGATOR_HARDCODED_GRID_Y_FRACTIONS",
+                cls.hardcoded_grid_y_fractions,
+            ),
+            obstacle_hardcoded_grid_enabled=cls._env_bool(
+                "NAVIGATOR_OBSTACLE_HARDCODED_GRID_ENABLED",
+                cls.obstacle_hardcoded_grid_enabled,
+            ),
+            obstacle_hardcoded_grid_x_fractions=cls._env_float_tuple(
+                "NAVIGATOR_OBSTACLE_HARDCODED_GRID_X_FRACTIONS",
+                cls.obstacle_hardcoded_grid_x_fractions,
+            ),
+            obstacle_hardcoded_grid_y_fractions=cls._env_float_tuple(
+                "NAVIGATOR_OBSTACLE_HARDCODED_GRID_Y_FRACTIONS",
+                cls.obstacle_hardcoded_grid_y_fractions,
+            ),
             lookahead=int(os.getenv("NAVIGATOR_LOOKAHEAD", str(cls.lookahead))),
             photos_dir=os.getenv("NAVIGATOR_PHOTOS_DIR", cls.photos_dir),
             request_timeout_s=int(
@@ -113,16 +168,10 @@ class NavigatorConfig:
                     str(cls.robot_clearance_margin_px),
                 )
             ),
-            contour_demo_padding_px=int(
+            obstacle_mini_grid_divisions=int(
                 os.getenv(
-                    "NAVIGATOR_CONTOUR_DEMO_PADDING_PX",
-                    str(cls.contour_demo_padding_px),
-                )
-            ),
-            contour_waypoint_reached_px=int(
-                os.getenv(
-                    "NAVIGATOR_CONTOUR_WAYPOINT_REACHED_PX",
-                    str(cls.contour_waypoint_reached_px),
+                    "NAVIGATOR_OBSTACLE_MINI_GRID_DIVISIONS",
+                    str(cls.obstacle_mini_grid_divisions),
                 )
             ),
             move_distance_fraction=float(

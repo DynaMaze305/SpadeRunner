@@ -17,6 +17,7 @@ from common.path_motion_executor import PathMotionExecutor
 from common.run_dir import new_run_dir
 
 from pathfinding.path_command_converter import PathCommandConverter
+from pathfinding.mini_grid_planner import MiniGridPlanner
 
 
 logging.basicConfig(level=logging.INFO)
@@ -66,9 +67,27 @@ class NavigatorAgent(agent.Agent):
             vision = MazeVisionPipeline(
                 threshold_ratio=cfg.grid_threshold_ratio,
                 min_gap=cfg.grid_min_gap,
+                expected_rows=cfg.expected_rows,
+                expected_cols=cfg.expected_cols,
+                hardcoded_grid_enabled=cfg.hardcoded_grid_enabled,
+                hardcoded_grid_x_fractions=cfg.hardcoded_grid_x_fractions,
+                hardcoded_grid_y_fractions=cfg.hardcoded_grid_y_fractions,
+                obstacle_hardcoded_grid_enabled=cfg.obstacle_hardcoded_grid_enabled,
+                obstacle_hardcoded_grid_x_fractions=(
+                    cfg.obstacle_hardcoded_grid_x_fractions
+                ),
+                obstacle_hardcoded_grid_y_fractions=(
+                    cfg.obstacle_hardcoded_grid_y_fractions
+                ),
             )
             localizer = RobotLocalizationStep(angle_offset_deg=cfg.angle_offset_deg)
-            planner = PathPlanner()
+            planner = PathPlanner(
+                mini_grid_planner=MiniGridPlanner(
+                    divisions=cfg.obstacle_mini_grid_divisions,
+                    obstacle_margin_px=cfg.obstacle_avoidance_margin_px,
+                    robot_margin_px=cfg.robot_clearance_margin_px,
+                ),
+            )
             converter = PathCommandConverter()
             executor = PathMotionExecutor(
                 behaviour=self,
@@ -83,6 +102,9 @@ class NavigatorAgent(agent.Agent):
                 run_dir=run_dir,
                 grid_detector=vision.grid,
                 localizer=localizer.localizer,
+                obstacle_margin_px=cfg.obstacle_avoidance_margin_px,
+                robot_margin_px=cfg.robot_clearance_margin_px,
+                mini_grid_divisions=cfg.obstacle_mini_grid_divisions,
             )
 
             orch = NavigationOrchestrator(
