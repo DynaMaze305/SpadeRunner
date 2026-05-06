@@ -9,6 +9,7 @@ from dashboard.render.AnalogGraphComponent import AnalogGraphComponent
 from dashboard.render.DigitalGraphComponent import DigitalGraphComponent
 from dashboard.render.BatteryGaugeComponent import BatteryGaugeComponent
 from dashboard.render.ControlButtonsComponent import ControlButtonsComponent
+from dashboard.render.PlayButtonComponent import PlayButtonsComponent
 from dashboard.render.ObstaclesComponent import ObstacleSensorsComponent
 from dashboard.render.MotorComponent import MotorComponent
 from dashboard.render.SelectBotComponent import SelectedBotComponent
@@ -26,10 +27,12 @@ BUTTONS = [
     {"text": "Calibrate ratio", "target_jid": "calibrator", "command": "calibrate ratio"},
     {"text": "Calibrate rotation", "target_jid": "calibrator", "command": "calibrate rotation"},
     {"text": "Calibrate distance", "target_jid": "calibrator", "command": "calibrate distance"},
-    {"text": "Penality", "target_jid": "navigator", "command": "penality"},
     {"text": "Init Race", "target_jid": "navigator", "command": "init_race"},
     {"text": "Ready Race", "target_jid": "navigator", "command": "ready_to_race"},
-    #{"text": "Buzzer", "target_jid": "sensors", "command": "buzz"},
+]
+PLAY_BUTTON = [
+    {"text": "Penality", "target_jid": "navigator", "command": "penality"},
+    {"text": "Buzzer", "target_jid": "camera", "command": "buzz"},
 ]
 DIGITAL_GRAPH = [
     {"label": "Left", "data_label": "digital_2"},
@@ -74,6 +77,7 @@ class Dashboard:
         motor_left = MotorComponent("Left Moto", "motion_left_pwm", "motion_left_direction")
         motor_right = MotorComponent("Right Moto", "motion_right_pwm", "motion_right_direction")
         buttons = ControlButtonsComponent(BUTTONS)
+        play_button = PlayButtonsComponent(PLAY_BUTTON)
         digitals = DigitalGraphComponent(DIGITAL_GRAPH)
         sliders = SliderComponent(SLIDERS)
         display = ImageDisplayComponent()
@@ -87,6 +91,7 @@ class Dashboard:
             motor_left,
             motor_right,
             buttons,
+            play_button,
             AnalogGraphComponent(),
             digitals,
             sliders
@@ -111,6 +116,7 @@ class Dashboard:
                 motor_right.render_html(),
             )
             + buttons.render_html()
+            + play_button.render_html()
             + row(
                 AnalogGraphComponent().render_html(),
                 digitals.render_html()
