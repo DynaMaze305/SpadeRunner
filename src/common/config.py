@@ -13,6 +13,11 @@ ROBOT_FILTRE = f"alphabot2{ROBOT_NUM}-agent"
 ARUCO_IDS = {"1": 12, "3": 8}
 ARUCO_ID = ARUCO_IDS[ROBOT_NUM]
 
+# Per-robot target marker. The navigator detects this marker at the start of a
+# run and uses the cell where it lies as the goal, instead of a hardcoded one.
+TARGET_ARUCO_IDS = {"1": 2, "3": 2}
+TARGET_ARUCO_ID = TARGET_ARUCO_IDS[ROBOT_NUM]
+
 # Per-robot angle offset compensating for the marker mounting direction.
 # Robot 1's marker is glued 180 deg flipped from robot 3's.
 ARUCO_ANGLE_OFFSETS = {"1": 180.0, "3": 0.0}
