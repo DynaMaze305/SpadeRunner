@@ -33,10 +33,12 @@ BUTTONS = [
 PLAY_BUTTON = [
     {"text": "Penality", "target_jid": "navigator", "command": "penality"},
     {"text": "Buzzer", "target_jid": "camera", "command": "buzz"},
+    {"text": "Light", "target_jid": "camera", "command": "leds 0 255 0 0 1 0 255 0 2 0 0 255 3 255 255 255"},
+    {"text": "Night", "target_jid": "camera", "command": "leds 0 0 0 0 1 0 0 0 2 0 0 0 3 0 0 0"},
 ]
 DIGITAL_GRAPH = [
     {"label": "Left", "data_label": "digital_2"},
-    {"label": "Right", "data_label": "digital_1"}
+    {"label": "Right", "data_label": "digital_1"},
 ]
 SELECT_BOT = [
     {"label": "Bot 1", "bot_id": "alphabot21-agent"},
