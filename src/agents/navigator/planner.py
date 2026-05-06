@@ -52,7 +52,7 @@ class PathPlanner:
     ) -> list[tuple[int, int]] | None:
         blocked_cells = obstacle_cells_from_frame(
             frame,
-            ignored_cells={coarse_path[-1]},
+            ignored_cells={coarse_path[0], coarse_path[-1]},
         )
         points: list[tuple[int, int]] = []
         protected_points: set[tuple[int, int]] = set()
@@ -65,15 +65,6 @@ class PathPlanner:
                 if not points or points[-1] != point:
                     points.append(point)
                 protected_points.add(point)
-                if (
-                    index == 0
-                    and len(coarse_path) > 1
-                    and coarse_path[1] not in blocked_cells
-                ):
-                    center = self._cell_center(frame, cell)
-                    if points[-1] != center:
-                        points.append(center)
-                    protected_points.add(center)
                 index += 1
                 continue
 
@@ -154,19 +145,25 @@ class PathPlanner:
 
         protected_points = protected_points or set()
         simplified = [points[0]]
+        last_kept_index = 0
         for index, point in enumerate(points[1:-1], start=1):
             if point in protected_points:
                 simplified.append(point)
+                last_kept_index = index
                 continue
 
             previous = simplified[-1]
             next_point = points[index + 1]
             if (
-                previous[0] == point[0] == next_point[0]
-                or previous[1] == point[1] == next_point[1]
+                index - last_kept_index == 1
+                and (
+                    previous[0] == point[0] == next_point[0]
+                    or previous[1] == point[1] == next_point[1]
+                )
             ):
                 continue
             simplified.append(point)
+            last_kept_index = index
         simplified.append(points[-1])
         return simplified
 

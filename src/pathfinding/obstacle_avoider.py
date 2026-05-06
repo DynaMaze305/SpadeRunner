@@ -166,4 +166,29 @@ class ObstacleAvoider:
                 )
                 return None
 
-        return safe_path
+        return self._simplify_axis_aligned_points(safe_path)
+
+    @staticmethod
+    def _simplify_axis_aligned_points(points: list[Point]) -> list[Point]:
+        if len(points) <= 2:
+            return points
+
+        simplified = [points[0]]
+        last_kept_index = 0
+        for index, point in enumerate(points[1:-1], start=1):
+            previous = simplified[-1]
+            next_point = points[index + 1]
+            if (
+                index - last_kept_index == 1
+                and (
+                    previous[0] == point[0] == next_point[0]
+                    or previous[1] == point[1] == next_point[1]
+                )
+            ):
+                continue
+
+            simplified.append(point)
+            last_kept_index = index
+
+        simplified.append(points[-1])
+        return simplified
