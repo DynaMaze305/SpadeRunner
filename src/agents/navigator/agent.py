@@ -4,7 +4,7 @@ import json
 import time
 import cv2
 import logging
-import os
+import re
 
 from spade import agent, behaviour
 from spade.message import Message
@@ -18,7 +18,7 @@ from agents.navigator.result import NavigationOutcome
 from agents.navigator.vision_pipeline import MazeVisionPipeline
 
 from common.camera_client import CameraClient
-from common.config import TELEMETRY_JID, ROBOT_JID, PAUSE_TIME
+from common.config import *
 from common.path_motion_executor import PathMotionExecutor
 from common.run_dir import new_run_dir
 
@@ -28,6 +28,24 @@ from pathfinding.path_command_converter import PathCommandConverter
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+COLOR_MAP = {
+    "orange":   (255, 165, 0),
+    "purple":   (128, 0, 128),
+    "black" :   (0,   0,   0)
+}
+
+def parse_color_string(colors: str):
+    match = re.findall(r"(?:start|end):([A-Za-z]+)", colors)
+    if len(match) != 2:
+        logging.warning(f"Invalide color format {colors}")
+        return "black" "black"
+    return match[0].lower(), match[1].lower()
+
+def color_to_rgb(name: str):
+    if name not in COLOR_MAP:
+        logging.warning(f"Unknown color: {name}")
+        return (0,0,0)
+    return COLOR_MAP[name]
 
 class NavigatorAgent(agent.Agent):
     ENV_PREFIX = "NAVIGATOR"
@@ -35,9 +53,12 @@ class NavigatorAgent(agent.Agent):
     def __init__(self, jid, password, verify_security = False):
         super().__init__(jid, password, verify_security)
         self.current_navigator = None
+        self.racing = False
+        self.racing_ready = False
+        self.paired = False
 
     class NavigatorListenner(behaviour.CyclicBehaviour):
-        async def runt(self):
+        async def run(self):
             cfg: NavigatorConfig = self.agent.cfg
 
             logger.info("[WAIT] Waiting for navigation start...")
@@ -50,21 +71,116 @@ class NavigatorAgent(agent.Agent):
 
             if request.body == "penality":
                 self.agent.paused = True
-                self.inform_penality()
+                await self.inform_penality()
                 return
 
             if request.body == "request path" and self.agent.current_navigator is None:
                 self.agent.current_navigator = self.agent.NavigateBehaviour()
                 self.agent.add_behaviour(self.agent.current_navigator)
+                return
+            
+            if request.body == "init_race" and not self.agent.racing and not self.agent.racing_ready:
+                self.agent.racing = True
+                await self.init_race()
+                return
+            
+            if request.body.startswith("paired ") and self.agent.racing and not self.agent.racing_ready:
+                self.agent.paired = True
+                await self.update_leds(request.body.split(' ', 1)[1])
+                return
+            
+            # if request.body.lower().startswith("executed command:") and self.agent.racing and self.agent.paired:
+            if request.body == "ready_to_race" and self.agent.racing and self.agent.paired:
+                self.agent.racing_ready = True
+                await self.update_leds("start:black end:black")
+                await self.ready_to_race()
+                return
+            
+            if request.body == "Go!!" and self.agent.racing_ready:
+                self.agent.current_navigator = self.agent.NavigateBehaviour()
+                self.agent.add_behaviour(self.agent.current_navigator)
+                return
+
+            if request.body.startswith("Total race time: "):
+                if self.agent.current_navigator is not None:
+                    self.agent.current_navigator = None
+                # Total race time: 106.057s
+                await self.send_total_time(request.body.split(': ',1)[1])
+                return
+            
+            if request.body.startswith("The race is finished! Your race time is: "):
+                if self.agent.current_navigator is not None:
+                    self.agent.current_navigator = None
+                self.agent.racing = False
+                self.agent.racing_ready = False
+                self.agent.paired = False
+                # The race is finished! Your race time is: 24.908s
+                await self.send_race_time(request.body.split(': ',1)[1])
+                return
+
+            return
 
         async def inform_penality(self):
+            logger.info("Inform penality!")
             msg = Message(to= ROBOT_JID)
             msg.set_metadata("performative", "inform")
             msg.set_metadata("emergency","penality")
             msg.body = "penality"
             await self.send(msg)
 
+        async def init_race(self):
+            logger.info("Init race!")
+            msg = Message(to=TIMEKEEPER_JID)
+            msg.set_metadata("performative", "request")
+            msg.body = "Hello TimeKeeper ! Please initialise a race."
+            await self.send(msg)
+
+        async def update_leds(self, colors: str):
+            logger.info(f"Update LEDs; {colors}")
+            start_color, end_color = parse_color_string(colors)
+
+            r1, g1, b1 = color_to_rgb(start_color)
+            r2, g2, b2 = color_to_rgb(end_color)
+
+            msg = Message(to=SENSORS_JID)
+            msg.set_metadata("performative", "request")
+            msg.body = f"leds 1 {r1} {g1} {b1} 2 {r2} {g2} {b2}"
+            await self.send(msg)
+
+        async def ready_to_race(self):
+            logger.info("Ready race!")
+            msg = Message(to=TIMEKEEPER_JID)
+            msg.set_metadata("performative", "request")
+            msg.body = "I'm ready to race !"
+            await self.send(msg)
+
+        async def send_total_time(self, time: str):
+            logger.info(f"Total time: {time}")
+            msg = Message(to=TELEMETRY_JID)
+            msg.set_metadata("performative", "inform")
+            msg.body = json.dumps({
+                "type": "total_time",
+                "bot":  ROBOT_FILTRE,
+                "ts":   0,
+                "data": {"total_time": time}
+            })
+            await self.send(msg)
+
+        async def send_race_time(self, time: str):
+            logger.info(f"Total time: {time}")
+            msg = Message(to=TELEMETRY_JID)
+            msg.set_metadata("performative", "inform")
+            msg.body = json.dumps({
+                "type": "race_time",
+                "bot":  ROBOT_FILTRE,
+                "ts":   0,
+                "data": {"race_time": time}
+            })
+            await self.send(msg)
+
     class NavigateBehaviour(behaviour.OneShotBehaviour):
+        async def on_start(self):
+            logger.info("Launch navigation.")
 
         # Pushes the path of the latest per-step path image to the logger agent
         # via XMPP. The logger reads the file from the shared filesystem.
@@ -92,6 +208,7 @@ class NavigatorAgent(agent.Agent):
                 await asyncio.sleep(PAUSE_TIME)
                 self.agent.paused = False
 
+            cfg: NavigatorConfig = self.agent.cfg
             logger.info("[START] Navigation requested")
             logger.info(
                 f"[CONFIG] target_cell={cfg.target_cell}, max_steps={cfg.max_steps}"
@@ -133,6 +250,7 @@ class NavigatorAgent(agent.Agent):
                 planner=planner,
                 converter=converter,
                 executor=executor,
+                navigator=self.agent,
                 debug=debug,
                 notify_logger=self.notify_logger,
             )
@@ -158,9 +276,13 @@ class NavigatorAgent(agent.Agent):
 
     async def setup(self):
         self.cfg = NavigatorConfig.from_env()
+        self.paused = False
         logger.info(
             f"[INIT] Navigator ready: target={self.cfg.target_cell}, "
             f"max_steps={self.cfg.max_steps}, "
             f"grid={self.cfg.expected_rows}x{self.cfg.expected_cols}"
         )
-        self.add_behaviour(self.NavigateBehaviour())
+        logger.info("TEST################")
+        self.add_behaviour(self.NavigatorListenner())
+
+        logger.info("TEST################")

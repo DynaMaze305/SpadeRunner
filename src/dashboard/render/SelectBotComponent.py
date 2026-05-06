@@ -86,6 +86,7 @@ class SelectedBotComponent(DashboardComponent):
                 if (typeof loadDigitalData === "function") loadDigitalData();
                 if (typeof loadMotionData === "function") loadMotionData();
                 if (typeof loadBatteryData === "function") loadBatteryData();
+                if (typeof loadRaceTime === "function") loadRaceTime();
             }}
 
             document.addEventListener("DOMContentLoaded", () => {{

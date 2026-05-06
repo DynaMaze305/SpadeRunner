@@ -44,7 +44,7 @@ class NavigationOrchestrator:
         localizer: RobotLocalizationStep,
         planner: PathPlanner,
         converter: PathCommandConverter,
-        navigator: NavigatorAgent,
+        navigator,
         executor,
         debug: NavigatorDebug | None = None,
         notify_logger: Callable[[str], Awaitable[None]] | None = None,

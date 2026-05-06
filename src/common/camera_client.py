@@ -5,10 +5,9 @@ import logging
 from spade.message import Message
 
 from common.photo_io import save_bytes
+from common.config import CAMERA_JID
 
 logger = logging.getLogger(__name__)
-
-CAMERA_JID = os.getenv("CAMERA_JID", "camera_agent@isc-coordinator2.lan")
 
 
 # Helper client that wraps the photo request exchange
@@ -21,14 +20,25 @@ class CameraClient:
     async def request_photo(self, label: str):
 
         # Sends a message to request the photo
-        msg = Message(to=self.jid)
-        msg.set_metadata("performative", "request")
-        msg.body = "Requesting photo"
-        await self.behaviour.send(msg)
-        logger.info(f"[{label}] photo requested from {self.jid}")
-
+        async def send_request():
+            msg = Message(to=self.jid)
+            msg.set_metadata("performative", "request")
+            msg.body = "Requesting photo"
+            await self.behaviour.send(msg)
+            logger.info(f"[{label}] photo requested from {self.jid}")
+        
+        await send_request()
         # waits for the photo reception
-        reply = await self.behaviour.receive(timeout=45)
+        while True:
+            reply = await self.behaviour.receive(timeout=45)
+            if reply:
+                if str(reply.sender.bare()) == self.jid:
+                    break
+                else:
+                    await send_request()
+            else:
+                await send_request()
+
         if reply is None:
             logger.error(f"[{label}] no photo received")
             return None
@@ -36,6 +46,7 @@ class CameraClient:
             # Decodes the picture and returns raw data
             return base64.b64decode(reply.body)
         except Exception as e:
+            logger.info(f"{msg}")
             logger.error(f"[{label}] failed to decode photo: {e}")
             return None
 

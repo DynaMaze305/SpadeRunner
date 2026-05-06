@@ -34,7 +34,6 @@ class TelemetryStore:
 
         cur = self.db.cursor()
         for key, value in sample["values"].items():
-            print((ts, bot, key, value))
             if key.startswith("motion"):
                 continue
             cur.execute(
