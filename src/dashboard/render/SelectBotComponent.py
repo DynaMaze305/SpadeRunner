@@ -1,9 +1,11 @@
 from dashboard.render.DashboardComponent import DashboardComponent
 import json
+from common.config import ROBOT_FILTRE
 
 class SelectedBotComponent(DashboardComponent):
     def __init__(self, bots):
         """
+        initial bot -> bot_id == ROBOT_FILTER
         bots: list of dicts like:
         [
             {"label": "Bot 1", "bot_id": "bot_1"},
@@ -67,6 +69,7 @@ class SelectedBotComponent(DashboardComponent):
             // ### Select Bot Component (render js) ###
             let selectedBot = null;
             const botList = {bots_json};
+            const initialBot = "{ROBOT_FILTRE}";
 
             function updateSelectedBotDisplay(bot) {{
                 document.getElementById("selected-bot-name").innerText = bot || "None";
@@ -96,10 +99,16 @@ class SelectedBotComponent(DashboardComponent):
                     selectBot(e.target.value);
                 }});
 
-                // Auto-select first bot
-                if (botList.length > 0) {{
-                    selectBot(botList[0].bot_id);
-                    sel.value = botList[0].bot_id;
+                // Auto-select initial bot if present, otherwise first bot
+                let defaultBot = botList.find(b => b.bot_id === initialBot);
+
+                if (!defaultBot && botList.length > 0) {{
+                    defaultBot = botList[0];
+                }}
+
+                if (defaultBot) {{
+                    selectBot(defaultBot.bot_id);
+                    sel.value = defaultBot.bot_id;
                 }}
             }});
         """
