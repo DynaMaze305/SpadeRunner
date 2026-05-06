@@ -60,6 +60,9 @@ class NavigatorConfig:
     obstacle_avoidance_margin_px: int = 2
     robot_clearance_margin_px: int = 0
     obstacle_mini_grid_divisions: int = 5
+    # Radius in crop-image pixels for accepting a mini-grid waypoint as reached.
+    # This avoids requiring the robot to hit the exact center of each mini cell.
+    mini_grid_waypoint_reached_px: float = 8.0
     # Fraction of the computed distance actually sent to the robot per step.
     # 1.0 = full move, 0.5 = half move (vision re-localizes between halves), etc.
     move_distance_fraction: float = 1.0
@@ -172,6 +175,12 @@ class NavigatorConfig:
                 os.getenv(
                     "NAVIGATOR_OBSTACLE_MINI_GRID_DIVISIONS",
                     str(cls.obstacle_mini_grid_divisions),
+                )
+            ),
+            mini_grid_waypoint_reached_px=float(
+                os.getenv(
+                    "NAVIGATOR_MINI_GRID_WAYPOINT_REACHED_PX",
+                    str(cls.mini_grid_waypoint_reached_px),
                 )
             ),
             move_distance_fraction=float(

@@ -274,7 +274,11 @@ class NavigationOrchestrator:
                     message="no valid mini-grid path",
                 )
 
-            waypoint_info = self._next_point_waypoint(robot_local_pos, point_path)
+            waypoint_info = self._next_point_waypoint(
+                robot_local_pos,
+                point_path,
+                reached_px=cfg.mini_grid_waypoint_reached_px,
+            )
             if waypoint_info is None:
                 logger.info("[SUCCESS] Reached mini-grid target")
                 self._save_debug(
