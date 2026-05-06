@@ -16,7 +16,7 @@ from common.config import *
 AGENTS = {
     CALIBRATOR_JID: CalibratorAgent,
     NAVIGATOR_JID: NavigatorAgent,
-    CAMERA_JID: CameraReceiverAgent,
+    RECEIVER_JID: CameraReceiverAgent,
 }
 
 

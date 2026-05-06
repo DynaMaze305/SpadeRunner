@@ -26,6 +26,8 @@ class TelemetryAgent(agent.Agent):
         self.test = test
         self.selected_bot = None
         self.dashboard = Dashboard()
+        self.last_race_time = {}
+        self.last_total_time = {}
 
 
     # ---------- behaviours ----------
@@ -74,7 +76,7 @@ class TelemetryAgent(agent.Agent):
             try:
                 payload = json.loads(body)
             except json.JSONDecodeError:
-                logger.warning("[AGENT] Invalid JSON received.")
+                logger.warning("[AGENT] Invalid Message received.")
                 return
 
             msg_type = payload.get("type")
@@ -102,7 +104,7 @@ class TelemetryAgent(agent.Agent):
                 logger.error(f"[AGENT] Error from bot: {payload.get('message')}")
                 return
 
-            if msg_type == "image_path":
+            if msg_type == "image_path" and self.agent.selected_bot is not None:
                 sender = str(msg.sender.bare())
                 logger.info(f"[AGENT] Receive image from {sender}")
                 if self.agent.selected_bot in sender:
@@ -115,6 +117,36 @@ class TelemetryAgent(agent.Agent):
                     await self.agent.dashboard.broadcast(sample)
                 else:
                     logger.info(f"[AGENT] Not processing image received.")
+                return
+
+            if msg_type == "race_time":
+                bot = payload["bot"]
+                race_time = payload["data"]["race_time"]
+
+                # Store last race time for this bot
+                self.last_race_time[bot] = race_time
+
+                # Broadcast to dashboard
+                await self.ws_broadcast({
+                    "type": "race_time",
+                    "bot": bot,
+                    "data": race_time
+                })
+                return
+
+            if msg_type == "total_time":
+                bot = payload["bot"]
+                race_time = payload["data"]["total_time"]
+
+                # Store last race time for this bot
+                self.last_total_time_time[bot] = race_time
+
+                # Broadcast to dashboard
+                await self.ws_broadcast({
+                    "type": "total_time",
+                    "bot": bot,
+                    "data": race_time
+                })
                 return
 
             logger.warning(f"[AGENT] Unknown message type: {msg_type}")

@@ -14,6 +14,7 @@ from dashboard.render.MotorComponent import MotorComponent
 from dashboard.render.SelectBotComponent import SelectedBotComponent
 from dashboard.render.SliderComponent import SliderComponent
 from dashboard.render.DisplayComponent import ImageDisplayComponent
+from dashboard.render.TimeComponent import RaceTimeComponent
 
 
 XMPP_DOMAIN = os.environ.get("XMPP_DOMAIN", "prosody")
@@ -26,7 +27,8 @@ BUTTONS = [
     {"text": "Calibrate rotation", "target_jid": "calibrator", "command": "calibrate rotation"},
     {"text": "Calibrate distance", "target_jid": "calibrator", "command": "calibrate distance"},
     {"text": "Penality", "target_jid": "navigator", "command": "penality"},
-    {"text": "Start Timer (mock)", "target_jid": TIMEKEEPER_JID, "command": "hello"},
+    {"text": "Init Race", "target_jid": "navigator", "command": "init_race"},
+    {"text": "Ready Race", "target_jid": "navigator", "command": "ready_to_race"},
     {"text": "Buzzer", "target_jid": SENSORS_JID, "command": "buzz"},
 ]
 DIGITAL_GRAPH = [
@@ -79,6 +81,7 @@ class Dashboard:
             PageComponent(),
             SelectedBotComponent(SELECT_BOT),
             display,
+            RaceTimeComponent(),
             ObstacleSensorsComponent(),
             BatteryGaugeComponent(),
             motor_left,
@@ -98,7 +101,10 @@ class Dashboard:
                 SelectedBotComponent(SELECT_BOT).render_html(),
                 BatteryGaugeComponent().render_html(),
             )
-            + display.render_html()
+            + row(
+                display.render_html(),
+                RaceTimeComponent().render_html(),
+            )
             + row(
                 motor_left.render_html(),
                 ObstacleSensorsComponent().render_html(),
@@ -185,7 +191,6 @@ ws.onmessage = (event) => {{
         await ws.prepare(request)
 
         self.websockets.add(ws)
-        print("[DASHBOARD] WebSocket client connected")
 
         await ws.send_json(self.latest)
 
@@ -215,6 +220,18 @@ ws.onmessage = (event) => {{
         bots = agent.store.list_bots()
         return web.json_response({"bots": bots})
 
+    async def _get_race_time(self, request):
+        agent = request.app["agent"]
+        bot = agent.selected_bot
+        time = agent.last_race_time.get(bot, None)
+        return web.json_response({"race_time": time})
+
+    async def _get_total_time(self,request):
+        agent = request.app["agent"]
+        bot = agent.selected_bot
+        time = agent.last_total_time.get(bot, None)
+        return web.json_response({"total_time": time})
+
     async def _set_selected_bot(self, request):
         agent = request.app["agent"]
         data = await request.json()
@@ -238,6 +255,8 @@ ws.onmessage = (event) => {{
         app.router.add_get("/api/digital", self._get_digital_data)
         app.router.add_get("/api/bots", self._get_bots)
         app.router.add_post("/api/select_bot", self._set_selected_bot)
+        app.router.add_get("/api/race_time", self._get_race_time)
+        app.router.add_get("/api/total_time", self._get_total_time)
 
         return app
 
