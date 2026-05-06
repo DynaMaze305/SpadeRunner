@@ -62,6 +62,32 @@ class RobotGridLocalizer:
         # Convert row/column indexes into a cell label like A1, B2, etc.
         return f"{string.ascii_uppercase[row]}{col + 1}"
 
+    def detect_marker_cell(
+        self,
+        image: np.ndarray,
+        target_id: int,
+        crop_bbox: tuple[int, int, int, int],
+        x_lines: list[int],
+        y_lines: list[int],
+    ) -> str | None:
+        # Detect the requested ArUco marker in the full image
+        result = self.aruco.detect_pose(image, target_id=target_id)
+
+        # Extract the marker pose result
+        pose = result["pose"]
+
+        # If the marker was not detected, no cell can be assigned
+        if pose is None:
+            return None
+
+        # Convert marker center into a maze cell label
+        return self.point_to_cell(
+            point=pose["center"],
+            crop_bbox=crop_bbox,
+            x_lines=x_lines,
+            y_lines=y_lines,
+        )
+
     def detect_robot_cell(
         self,
         image: np.ndarray,

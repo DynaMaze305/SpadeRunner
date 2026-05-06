@@ -45,3 +45,14 @@ class RobotLocalizationStep:
             corners=result["corners"],
             ids=result["ids"],
         )
+
+    # Locates the cell where a non-robot marker (e.g. the goal marker) sits.
+    # Used at navigation start to read the target cell from the maze.
+    def find_marker_cell(self, frame, target_id: int) -> str | None:
+        return self.localizer.detect_marker_cell(
+            image=frame.image,
+            target_id=target_id,
+            crop_bbox=frame.maze["crop_bbox"],
+            x_lines=frame.x_lines,
+            y_lines=frame.y_lines,
+        )

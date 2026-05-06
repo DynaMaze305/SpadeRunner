@@ -10,6 +10,8 @@ from typing import Awaitable, Callable, Optional
 MAX_DETECT_ATTEMPTS = 3
 RETRY_DELAY_S = 0.2
 
+from common.config import TARGET_ARUCO_ID
+
 from agents.navigator.config import NavigatorConfig
 from agents.navigator.debug import NavigatorDebug
 from agents.navigator.localization import RobotLocalizationStep
@@ -54,6 +56,11 @@ class NavigationOrchestrator:
         self.executor = executor
         self.debug = debug
         self.notify_logger = notify_logger
+
+        # Goal cell. Falls back to the configured value until the target ArUco
+        # marker is detected in the first valid frame, then locked in.
+        self.target_cell = config.target_cell
+        self._target_detected = False
 
     async def run(self) -> NavigationResult:
         cfg = self.config
@@ -149,6 +156,22 @@ class NavigationOrchestrator:
                     f"crop={frame.maze['crop_bbox']}"
                 )
 
+            # Read the goal cell from the target ArUco marker on the first valid
+            # frame. If the marker is not visible yet, retry on the next step.
+            if not self._target_detected:
+                detected = self.localizer.find_marker_cell(frame, TARGET_ARUCO_ID)
+                if detected is not None:
+                    self.target_cell = detected
+                    self._target_detected = True
+                    logger.info(
+                        f"[TARGET] aruco {TARGET_ARUCO_ID} -> cell {detected}"
+                    )
+                else:
+                    logger.warning(
+                        f"[TARGET] aruco {TARGET_ARUCO_ID} not detected at step {step}, "
+                        f"using fallback {self.target_cell}"
+                    )
+
             robot = self.localizer.locate(frame)
 
             # If aruco was not detected, retry with fresh photos (up to MAX_DETECT_ATTEMPTS total)
@@ -197,7 +220,7 @@ class NavigationOrchestrator:
             # Proximity check: count as reached if robot is within the configured
             # radius from the target cell center, even if still labelled in a neighbour cell.
             target_center = self._cell_center_local(
-                cfg.target_cell, frame.x_lines, frame.y_lines,
+                self.target_cell, frame.x_lines, frame.y_lines,
             )
             robot_local_pos_check = self._robot_local_position(frame, robot)
             distance_to_target_mm = None
@@ -207,7 +230,7 @@ class NavigationOrchestrator:
                     target_center[1] - robot_local_pos_check[1],
                 ) * cfg.mm_per_pixel
                 logger.info(
-                    f"[TARGET] {cfg.target_cell} distance={distance_to_target_mm:.0f} mm "
+                    f"[TARGET] {self.target_cell} distance={distance_to_target_mm:.0f} mm "
                     f"(radius={cfg.cell_reached_radius_mm:.0f} mm)"
                 )
 
@@ -216,7 +239,7 @@ class NavigationOrchestrator:
                 and distance_to_target_mm <= cfg.cell_reached_radius_mm
             )
 
-            if current_cell == cfg.target_cell or within_radius:
+            if current_cell == self.target_cell or within_radius:
                 logger.info("[SUCCESS] Reached destination")
                 self._save_debug(step, image=frame.image, frame=frame, robot_pose=robot, path=None)
                 return NavigationResult(
@@ -226,7 +249,7 @@ class NavigationOrchestrator:
                     message="reached target",
                 )
 
-            path = self.planner.plan(frame, current_cell, cfg.target_cell)
+            path = self.planner.plan(frame, current_cell, self.target_cell)
             if path is None or len(path) < 2:
                 logger.error("[ERROR] No valid path")
                 self._save_debug(step, image=frame.image, frame=frame, robot_pose=robot, path=None)
@@ -613,7 +636,7 @@ class NavigationOrchestrator:
         next_cell = path[1]
         blocked_cells = obstacle_cells_from_frame(
             frame,
-            ignored_cells={current_cell, self.config.target_cell},
+            ignored_cells={current_cell, self.target_cell},
         )
         if next_cell in blocked_cells:
             return next_cell
