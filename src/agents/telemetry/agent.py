@@ -9,7 +9,7 @@ from aiohttp import web
 from spade import agent, behaviour
 from spade.message import Message
 
-from common.config import COORDINATOR_HOST
+from common.config import *
 from dashboard.dashboard_server import Dashboard
 from agents.telemetry.telemetrystore import TelemetryStore
 
@@ -28,6 +28,7 @@ class TelemetryAgent(agent.Agent):
         self.dashboard = Dashboard()
         self.last_race_time = {}
         self.last_total_time = {}
+        self.current_button = None
 
 
     # ---------- behaviours ----------
@@ -72,6 +73,21 @@ class TelemetryAgent(agent.Agent):
 
             body = (msg.body or "").strip()
             #logger.info(f"[AGENT] XMPP message: {body}")
+            logger.info(f"[AGENT] XMPP message: {msg.sender}")
+
+            if self.agent.current_button is not None:
+                if self.agent.current_button == str(msg.sender.bare()):
+                    logger.info(f"Agent button {self.agent.current_button} == current {msg.sender.bare()}")
+                    logger.info(f"{body}")
+                    if body in ["navigation done","navigation failed", "race step done", "penality done"] or body.startswith("Executed command:"):
+                        logger.info("navigation impact")
+                        sample = {
+                            "type": "command_done",
+                            "bot":  self.agent.current_button.split('-',1)[1].split('@')[0],
+                        }
+                        self.agent.current_button = None
+                        await self.agent.dashboard.broadcast(sample)
+                        return
 
             try:
                 payload = json.loads(body)
@@ -160,6 +176,11 @@ class TelemetryAgent(agent.Agent):
             self.value = value
 
         async def run(self):
+            if self.agent.current_button is None:
+                self.agent.current_button = self.target
+            else:
+                logger.info("[AGENT] handle_command: Error command already running")
+                return
             logger.info(f"[AGENT] handle_command: {self.cmd}")
 
             msg = Message(to=self.target)
@@ -170,6 +191,15 @@ class TelemetryAgent(agent.Agent):
                 msg.body = f"{self.cmd} {self.value}"
             await self.send(msg)
             logger.info(f"[AGENT] Sent XMPP message: {msg}")
+
+            if self.target.startswith("calibrator"):
+                await asyncio.sleep(60)
+                sample = {
+                    "type": "command_done",
+                    "bot":  self.agent.current_button.split('-',1)[1].split('@')[0],
+                }
+                self.agent.current_button = None
+                await self.agent.dashboard.broadcast(sample)
 
     # ---------- helpers ----------
     def _payload_to_samples(self, payload: dict) -> dict:
