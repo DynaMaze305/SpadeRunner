@@ -109,6 +109,7 @@ class NavigatorDebug:
         robot_pose=None,
         path: list[str] | None = None,
         point_path: list[tuple[int, int]] | None = None,
+        next_waypoint: tuple[int, int] | None = None,
     ) -> None:
         image_with_axes = self.camera.draw_axes(image) if image is not None else None
 
@@ -146,7 +147,9 @@ class NavigatorDebug:
                     grid_walls=frame.grid_walls,
                 )
 
-        path_img = self._build_path_panel(frame, robot_pose, path, point_path)
+        path_img = self._build_path_panel(
+            frame, robot_pose, path, point_path, next_waypoint,
+        )
         obstacles_img = self._build_obstacles_panel(frame)
 
         # Save individual full-resolution images into individuals/step_N/
@@ -224,6 +227,7 @@ class NavigatorDebug:
         robot_pose,
         path: list[str] | None,
         point_path: list[tuple[int, int]] | None = None,
+        next_waypoint: tuple[int, int] | None = None,
     ) -> np.ndarray | None:
         if frame is None:
             return None
@@ -294,17 +298,31 @@ class NavigatorDebug:
             )
             cv2.arrowedLine(canvas, local_center, end, ARROW_COLOR, ARROW_THICK)
 
-            # Target heading arrow (green) toward the next cell in the path,
-            # plus info text covering current/target/rotation/distance.
-            if point_path:
+            # Target heading arrow (green) toward the actual next waypoint
+            # the orchestrator picked, plus info text covering current /
+            # target / rotation / distance. Falls back to point_path[0] only
+            # if next_waypoint wasn't provided.
+            next_center = None
+            next_label = "?"
+            if next_waypoint is not None:
+                next_center = next_waypoint
+            elif point_path:
                 next_center = point_path[0]
-                next_label = "mini"
             elif path and len(path) >= 2:
-                next_cell = path[1]
-                next_center = self._cell_center(next_cell, frame)
-                next_label = next_cell
-            else:
-                next_center = None
+                next_center = self._cell_center(path[1], frame)
+                next_label = path[1]
+
+            if next_center is not None and next_label == "?":
+                bounds = self._cell_bounds_for_point(
+                    next_center, frame.x_lines, frame.y_lines,
+                )
+                rc = (
+                    self._bounds_to_rc(bounds, frame.x_lines, frame.y_lines)
+                    if bounds is not None
+                    else None
+                )
+                if rc is not None:
+                    next_label = chr(ord("A") + rc[0]) + str(rc[1] + 1)
 
             if next_center is not None:
                 dx = next_center[0] - local_center[0]
