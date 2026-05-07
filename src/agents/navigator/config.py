@@ -48,6 +48,12 @@ class NavigatorConfig:
     photos_dir: str = "navigation_photos"
     request_timeout_s: int = 9999
 
+    # When set to a path, run the navigator headless: the first photo is read
+    # from this file (used to seed maze + initial pose), subsequent photos still
+    # come from the real camera, but localization and motion are emulated from
+    # the integrated motion deltas. Empty / unset = production mode.
+    emulation_seed: str = ""
+
     angle_offset_deg: float = 0.0
 
     rotation_tolerance_deg: float = 2.0
@@ -146,6 +152,9 @@ class NavigatorConfig:
             photos_dir=os.getenv("NAVIGATOR_PHOTOS_DIR", cls.photos_dir),
             request_timeout_s=int(
                 os.getenv("NAVIGATOR_REQUEST_TIMEOUT_S", str(cls.request_timeout_s))
+            ),
+            emulation_seed=os.getenv(
+                "NAVIGATOR_EMULATION_SEED", cls.emulation_seed
             ),
             angle_offset_deg=float(
                 os.getenv("NAVIGATOR_ANGLE_OFFSET_DEG", str(ARUCO_ANGLE_OFFSET))

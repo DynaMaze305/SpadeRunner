@@ -5,6 +5,12 @@ from spade.message import Message
 
 from agents.navigator.config import NavigatorConfig
 from agents.navigator.debug import NavigatorDebug
+from agents.navigator.emulation import (
+    FakeExecutor,
+    FakeLocalizer,
+    SimulationState,
+    seeded_photo_source,
+)
 from agents.navigator.localization import RobotLocalizationStep
 from agents.navigator.orchestrator import NavigationOrchestrator
 from agents.navigator.planner import PathPlanner
@@ -107,9 +113,19 @@ class NavigatorAgent(agent.Agent):
                 mini_grid_divisions=cfg.obstacle_mini_grid_divisions,
             )
 
+            photo_source = camera.request_photo
+            if cfg.emulation_seed:
+                logger.info(
+                    f"[EMU] headless emulation enabled, seed={cfg.emulation_seed}"
+                )
+                sim = SimulationState(mm_per_pixel=cfg.mm_per_pixel)
+                photo_source = seeded_photo_source(cfg.emulation_seed, photo_source)
+                localizer = FakeLocalizer(localizer, sim)
+                executor = FakeExecutor(sim)
+
             orch = NavigationOrchestrator(
                 config=cfg,
-                photo_source=camera.request_photo,
+                photo_source=photo_source,
                 vision=vision,
                 localizer=localizer,
                 planner=planner,
