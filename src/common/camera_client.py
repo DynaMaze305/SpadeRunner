@@ -4,6 +4,7 @@ import logging
 
 from spade.message import Message
 
+from common.config import CAMERA_JID
 from common.photo_io import save_bytes
 from common.config import CAMERA_JID
 
