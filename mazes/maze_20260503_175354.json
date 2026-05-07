@@ -1,0 +1,231 @@
+{
+  "saved_at": "2026-05-03T17:53:56",
+  "crop_bbox": [
+    20,
+    120,
+    778,
+    380
+  ],
+  "x_lines": [
+    8,
+    73,
+    139,
+    211,
+    274,
+    341,
+    408,
+    476,
+    541,
+    611,
+    678,
+    748
+  ],
+  "y_lines": [
+    11,
+    111,
+    176,
+    245
+  ],
+  "n_rows": 3,
+  "n_cols": 11,
+  "grid_walls": {
+    "A1": {
+      "bottom": true,
+      "top": false,
+      "left": true,
+      "right": false
+    },
+    "A2": {
+      "bottom": true,
+      "top": false,
+      "left": false,
+      "right": true
+    },
+    "A3": {
+      "bottom": true,
+      "top": false,
+      "left": true,
+      "right": false
+    },
+    "A4": {
+      "bottom": true,
+      "top": false,
+      "left": false,
+      "right": true
+    },
+    "A5": {
+      "bottom": true,
+      "top": true,
+      "left": true,
+      "right": false
+    },
+    "A6": {
+      "bottom": true,
+      "top": true,
+      "left": false,
+      "right": false
+    },
+    "A7": {
+      "bottom": true,
+      "top": true,
+      "left": false,
+      "right": true
+    },
+    "A8": {
+      "bottom": true,
+      "top": true,
+      "left": true,
+      "right": false
+    },
+    "A9": {
+      "bottom": true,
+      "top": true,
+      "left": false,
+      "right": false
+    },
+    "A10": {
+      "bottom": true,
+      "top": false,
+      "left": false,
+      "right": false
+    },
+    "A11": {
+      "bottom": true,
+      "top": false,
+      "left": false,
+      "right": true
+    },
+    "B1": {
+      "bottom": false,
+      "top": false,
+      "left": true,
+      "right": true
+    },
+    "B2": {
+      "bottom": false,
+      "top": false,
+      "left": true,
+      "right": true
+    },
+    "B3": {
+      "bottom": false,
+      "top": true,
+      "left": true,
+      "right": false
+    },
+    "B4": {
+      "bottom": false,
+      "top": false,
+      "left": false,
+      "right": false
+    },
+    "B5": {
+      "bottom": true,
+      "top": false,
+      "left": false,
+      "right": false
+    },
+    "B6": {
+      "bottom": true,
+      "top": false,
+      "left": false,
+      "right": false
+    },
+    "B7": {
+      "bottom": true,
+      "top": false,
+      "left": false,
+      "right": true
+    },
+    "B8": {
+      "bottom": true,
+      "top": false,
+      "left": true,
+      "right": false
+    },
+    "B9": {
+      "bottom": true,
+      "top": false,
+      "left": false,
+      "right": true
+    },
+    "B10": {
+      "bottom": false,
+      "top": false,
+      "left": true,
+      "right": true
+    },
+    "B11": {
+      "bottom": false,
+      "top": false,
+      "left": true,
+      "right": true
+    },
+    "C1": {
+      "bottom": false,
+      "top": true,
+      "left": true,
+      "right": true
+    },
+    "C2": {
+      "bottom": false,
+      "top": true,
+      "left": true,
+      "right": false
+    },
+    "C3": {
+      "bottom": true,
+      "top": true,
+      "left": false,
+      "right": false
+    },
+    "C4": {
+      "bottom": false,
+      "top": true,
+      "left": false,
+      "right": false
+    },
+    "C5": {
+      "bottom": false,
+      "top": true,
+      "left": false,
+      "right": false
+    },
+    "C6": {
+      "bottom": false,
+      "top": true,
+      "left": false,
+      "right": false
+    },
+    "C7": {
+      "bottom": false,
+      "top": true,
+      "left": false,
+      "right": false
+    },
+    "C8": {
+      "bottom": false,
+      "top": true,
+      "left": false,
+      "right": true
+    },
+    "C9": {
+      "bottom": false,
+      "top": true,
+      "left": true,
+      "right": false
+    },
+    "C10": {
+      "bottom": false,
+      "top": true,
+      "left": false,
+      "right": true
+    },
+    "C11": {
+      "bottom": false,
+      "top": true,
+      "left": true,
+      "right": true
+    }
+  }
+}
