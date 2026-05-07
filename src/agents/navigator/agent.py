@@ -3,6 +3,7 @@ import base64
 import json
 import time
 import cv2
+
 import logging
 import re
 
@@ -19,6 +20,7 @@ from agents.navigator.vision_pipeline import MazeVisionPipeline
 
 from common.camera_client import CameraClient
 from common.config import *
+from common.config import TELEMETRY_JID, ROBOT_JID, UR_JID
 from common.path_motion_executor import PathMotionExecutor
 from common.run_dir import new_run_dir
 
@@ -60,6 +62,16 @@ class NavigatorAgent(agent.Agent):
         self.paired = False
 
     class NavigatorListenner(behaviour.CyclicBehaviour):
+        async def request_boulder_pick(
+            self,
+            boulder_position_m: dict[str, float],
+        ) -> None:
+            msg = Message(to=UR_JID)
+            msg.set_metadata("performative", "request")
+            msg.body = f"pick {json.dumps({'pick': boulder_position_m})}"
+            await self.send(msg)
+            logger.info(f"[NAV] requested {UR_JID} pick_boulder {msg.body}")
+
         async def run(self):
             cfg: NavigatorConfig = self.agent.cfg
 
@@ -298,17 +310,25 @@ class NavigatorAgent(agent.Agent):
                 navigator=self.agent,
                 debug=debug,
                 notify_logger=self.notify_logger,
+                boulder_picker=self.request_boulder_pick,
             )
 
             result = await orch.run()
             logger.info(
                 f"[RESULT] outcome={result.outcome.name} "
-                f"steps={result.steps_taken} last_cell={result.last_cell}"
+                f"steps={result.steps_taken} last_cell={result.last_cell} "
+                f"boulders={result.boulder_coordinates} "
+                f"boulder_positions_m={result.boulder_positions_m}"
             )
 
             reply = Message(to=self.agent.current_requester)
             reply.set_metadata("performative", "response")
             reply.set_metadata("outcome", result.outcome.name)
+            reply.set_metadata("boulder_coordinates", str(result.boulder_coordinates))
+            reply.set_metadata(
+                "boulder_positions_m",
+                json.dumps(result.boulder_positions_m),
+            )
             reply.body = (
                 "navigation done"
                 if result.outcome is NavigationOutcome.REACHED

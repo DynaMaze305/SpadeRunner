@@ -46,6 +46,7 @@ class NavigationOrchestrator:
         executor,
         debug: NavigatorDebug | None = None,
         notify_logger: Callable[[str], Awaitable[None]] | None = None,
+        boulder_picker: Callable[[dict[str, float]], Awaitable[None]] | None = None,
     ) -> None:
         self.config = config
         self.photo_source = photo_source
@@ -57,6 +58,7 @@ class NavigationOrchestrator:
         self.executor = executor
         self.debug = debug
         self.notify_logger = notify_logger
+        self.boulder_picker = boulder_picker
 
         # Goal cell. Falls back to the configured value until the target ArUco
         # marker is detected in the first valid frame, then locked in.
@@ -67,6 +69,9 @@ class NavigationOrchestrator:
         cfg = self.config
         bad_grid_count = 0
         last_cell: str | None = None
+        latest_boulder_coordinates: list[tuple[int, int]] = []
+        latest_boulder_positions_m: list[dict[str, float]] = []
+        boulder_pick_requested = False
         # Cache of the maze structure (crop_bbox, walls, grid lines) from the
         # first successful frame; reused thereafter to skip the wall pipeline.
         cached_frame = None
@@ -88,6 +93,23 @@ class NavigationOrchestrator:
                 )
 
             logger.info(f"[IMAGE] Received {len(img_bytes)} bytes")
+
+            if not boulder_pick_requested and self.boulder_picker is not None:
+                preflight_boulders = self.vision.detect_boulders_only(
+                    img_bytes,
+                    cached=cached_frame,
+                )
+                if not isinstance(preflight_boulders, VisionError):
+                    preflight_positions_m = self._boulder_positions_m(
+                        preflight_boulders,
+                    )
+                    if preflight_positions_m:
+                        await self.boulder_picker(preflight_positions_m[0])
+                        boulder_pick_requested = True
+                        logger.info(
+                            f"[BOULDERS] pick requested before obstacles/motion: "
+                            f"{preflight_positions_m[0]}"
+                        )
 
             if cached_frame is not None:
                 frame_or_err = self.vision.analyze_with_cached_maze(
@@ -122,12 +144,18 @@ class NavigationOrchestrator:
                 )
 
             frame = frame_or_err
+            latest_boulder_coordinates = frame.boulder_coordinates
+            latest_boulder_positions_m = self._boulder_positions_m(
+                latest_boulder_coordinates,
+            )
             logger.info(f"[IMAGE] Shape: {frame.image.shape}")
             logger.info(f"[MAZE] crop_bbox: {frame.maze['crop_bbox']}")
             logger.info(f"[GRID] x_lines: {frame.x_lines}")
             logger.info(f"[GRID] y_lines: {frame.y_lines}")
             logger.info(f"[GRID] rows: {frame.n_rows}, cols: {frame.n_cols}")
             logger.info(f"[OBSTACLES] {frame.obstacles}")
+            logger.info(f"[BOULDERS] coordinates={frame.boulder_coordinates}")
+            logger.info(f"[BOULDERS] positions_m={latest_boulder_positions_m}")
 
             # Grid validation only runs while we don't have a cached maze: once
             # we've locked one in, the structure is reused and trusted.
@@ -147,6 +175,8 @@ class NavigationOrchestrator:
                             last_cell=last_cell,
                             steps_taken=step,
                             message="too many bad grid detections",
+                            boulder_coordinates=latest_boulder_coordinates,
+                            boulder_positions_m=latest_boulder_positions_m,
                         )
                     continue
 
@@ -199,6 +229,10 @@ class NavigationOrchestrator:
                     continue
                 # Fresh detection on the new frame
                 frame = retry_frame_or_err
+                latest_boulder_coordinates = frame.boulder_coordinates
+                latest_boulder_positions_m = self._boulder_positions_m(
+                    latest_boulder_coordinates,
+                )
                 robot = self.localizer.locate(frame)
 
             # All retries exhausted, skip this step instead of killing the run
@@ -249,6 +283,8 @@ class NavigationOrchestrator:
                     last_cell=current_cell,
                     steps_taken=step,
                     message="reached target",
+                    boulder_coordinates=latest_boulder_coordinates,
+                    boulder_positions_m=latest_boulder_positions_m,
                 )
 
             if target_center is None:
@@ -259,6 +295,8 @@ class NavigationOrchestrator:
                     last_cell=current_cell,
                     steps_taken=step,
                     message=f"invalid target cell {self.target_cell}",
+                    boulder_coordinates=latest_boulder_coordinates,
+                    boulder_positions_m=latest_boulder_positions_m,
                 )
 
             robot_local_pos = self._robot_local_position(frame, robot)
@@ -277,6 +315,8 @@ class NavigationOrchestrator:
                     last_cell=current_cell,
                     steps_taken=step,
                     message="no valid mini-grid path",
+                    boulder_coordinates=latest_boulder_coordinates,
+                    boulder_positions_m=latest_boulder_positions_m,
                 )
 
             waypoint_info = self._next_point_waypoint(
@@ -299,6 +339,8 @@ class NavigationOrchestrator:
                     last_cell=current_cell,
                     steps_taken=step,
                     message="reached target",
+                    boulder_coordinates=latest_boulder_coordinates,
+                    boulder_positions_m=latest_boulder_positions_m,
                 )
 
             waypoint, snapped_current_node, snapped_distance_px = waypoint_info
@@ -352,6 +394,8 @@ class NavigationOrchestrator:
                     last_cell=current_cell,
                     steps_taken=step,
                     message="motion execution failed",
+                    boulder_coordinates=latest_boulder_coordinates,
+                    boulder_positions_m=latest_boulder_positions_m,
                 )
 
         logger.error("[FAIL] Max steps reached")
@@ -360,6 +404,8 @@ class NavigationOrchestrator:
             last_cell=last_cell,
             steps_taken=cfg.max_steps,
             message="max steps reached",
+            boulder_coordinates=latest_boulder_coordinates,
+            boulder_positions_m=latest_boulder_positions_m,
         )
 
     # Runs the path's commands, but each rotation goes through a measure-and-correct
@@ -469,6 +515,23 @@ class NavigationOrchestrator:
                 continue
             # Scale by the fraction so the loop can re-localize between partial moves
             cmd["distance_mm"] = float(distance_px) * self.config.mm_per_pixel * self.config.move_distance_fraction
+
+    def _boulder_positions_m(
+        self,
+        boulder_coordinates: list[tuple[int, int]],
+    ) -> list[dict[str, float]]:
+        meters_per_pixel = self.config.mm_per_pixel / 1000.0
+        origin_x = self.config.arm_origin_px_x
+        origin_y = self.config.arm_origin_px_y
+        y_sign = -1.0 if self.config.arm_flip_y else 1.0
+
+        return [
+            {
+                "x": round((x - origin_x) * meters_per_pixel, 6),
+                "y": round((y - origin_y) * meters_per_pixel * y_sign, 6),
+            }
+            for x, y in boulder_coordinates
+        ]
 
     @staticmethod
     def _robot_local_position(frame, robot) -> tuple[int, int]:

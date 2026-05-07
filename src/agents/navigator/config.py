@@ -56,6 +56,9 @@ class NavigatorConfig:
     # Pixel-to-millimetre conversion for the camera-cropped maze view.
     # Cell width is 200 mm, average detected cell width is ~67.5 px -> ~2.96 mm/px.
     mm_per_pixel: float = 2.96
+    arm_origin_px_x: int = 374
+    arm_origin_px_y: int = 47
+    arm_flip_y: bool = True
 
     obstacle_avoidance_margin_px: int = 2
     robot_clearance_margin_px: int = 0
@@ -159,6 +162,13 @@ class NavigatorConfig:
             mm_per_pixel=float(
                 os.getenv("NAVIGATOR_MM_PER_PIXEL", str(cls.mm_per_pixel))
             ),
+            arm_origin_px_x=int(
+                os.getenv("NAVIGATOR_ARM_ORIGIN_PX_X", str(cls.arm_origin_px_x))
+            ),
+            arm_origin_px_y=int(
+                os.getenv("NAVIGATOR_ARM_ORIGIN_PX_Y", str(cls.arm_origin_px_y))
+            ),
+            arm_flip_y=cls._env_bool("NAVIGATOR_ARM_FLIP_Y", cls.arm_flip_y),
             obstacle_avoidance_margin_px=int(
                 os.getenv(
                     "NAVIGATOR_OBSTACLE_AVOIDANCE_MARGIN_PX",

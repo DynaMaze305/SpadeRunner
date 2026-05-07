@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 
@@ -24,3 +24,5 @@ class NavigationResult:
     last_cell: str | None = None
     steps_taken: int = 0
     message: str = ""
+    boulder_coordinates: list[tuple[int, int]] = field(default_factory=list)
+    boulder_positions_m: list[dict[str, float]] = field(default_factory=list)

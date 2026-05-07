@@ -6,6 +6,7 @@ from enum import Enum
 import numpy as np
 
 from vision.camera import Camera
+from vision.boulder_detector import BoulderDetector
 from vision.color_detector_image_cropper import ColorDetectorImageCropper
 from vision.contour_processor import ContourProcessor
 from vision.grid_detector import GridDetector
@@ -37,6 +38,8 @@ class VisionFrame:
     obstacle_mask: np.ndarray
     obstacles: list[tuple[int, int, int, int]]
     obstacle_robot_exclusions: list[tuple[int, int, int, int]]
+    boulder_mask: np.ndarray
+    boulder_coordinates: list[tuple[int, int]]
 
 
 # Runs the full pink-mask -> walls -> grid -> walls-dict pipeline once per frame.
@@ -75,6 +78,7 @@ class MazeVisionPipeline:
         self.grid = GridDetector()
         self.analyzer = MazeGridAnalyzer()
         self.aruco = ArucoDetector()
+        self.boulder = BoulderDetector()
 
     def analyze(self, image_bytes: bytes | None) -> VisionFrame | VisionError:
         if image_bytes is None:
@@ -92,6 +96,9 @@ class MazeVisionPipeline:
         cropped_mask = maze["cropped_mask"]
         wall_bin = self.contour.create_wall_binary(cropped_mask)
         wall_clean = self.contour.clean_wall_mask(wall_bin)
+        boulder_mask, boulder_coordinates = self.boulder.detect_boulders(
+            maze["cropped"],
+        )
         obstacle_mask, obstacles, robot_exclusions = detect_obstacles(
             maze["cropped"],
             aruco_detector=self.aruco,
@@ -147,7 +154,34 @@ class MazeVisionPipeline:
             obstacle_mask=obstacle_mask,
             obstacles=obstacles,
             obstacle_robot_exclusions=robot_exclusions,
+            boulder_mask=boulder_mask,
+            boulder_coordinates=boulder_coordinates,
         )
+
+    def detect_boulders_only(
+        self,
+        image_bytes: bytes | None,
+        cached: VisionFrame | None = None,
+    ) -> list[tuple[int, int]] | VisionError:
+        if image_bytes is None:
+            return VisionError.NO_IMAGE
+
+        try:
+            image = Camera.decode_image(image_bytes)
+        except ValueError:
+            return VisionError.NO_IMAGE
+
+        if cached is not None:
+            x1, y1, x2, y2 = cached.maze["crop_bbox"]
+            cropped = image[y1:y2, x1:x2]
+        else:
+            maze = self.cropper.detect_and_crop_pink_object(image)
+            if maze is None:
+                return VisionError.NO_MAZE
+            cropped = maze["cropped"]
+
+        _, boulder_coordinates = self.boulder.detect_boulders(cropped)
+        return boulder_coordinates
 
     # Fast path used after the maze has been analyzed once: only decodes the new
     # image and re-crops it using the cached crop_bbox. Walls, grid lines, the
@@ -173,6 +207,7 @@ class MazeVisionPipeline:
         # New maze dict: refreshed `cropped` slice, every other field reused.
         maze = dict(cached.maze)
         maze["cropped"] = cropped
+        boulder_mask, boulder_coordinates = self.boulder.detect_boulders(cropped)
 
         return VisionFrame(
             image=image,
@@ -187,6 +222,8 @@ class MazeVisionPipeline:
             obstacle_mask=cached.obstacle_mask,
             obstacles=cached.obstacles,
             obstacle_robot_exclusions=cached.obstacle_robot_exclusions,
+            boulder_mask=boulder_mask,
+            boulder_coordinates=boulder_coordinates,
         )
 
     def _hardcoded_grid_lines(
