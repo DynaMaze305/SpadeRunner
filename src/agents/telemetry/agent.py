@@ -79,7 +79,7 @@ class TelemetryAgent(agent.Agent):
                 if self.agent.current_button == str(msg.sender.bare()):
                     logger.info(f"Agent button {self.agent.current_button} == current {msg.sender.bare()}")
                     logger.info(f"{body}")
-                    if body in ["navigation done","navigation failed", "race step done", "penality done"] or body.startswith("Executed command:"):
+                    if body in ["navigation done","navigation failed", "race step done"] or body.startswith("Executed command:"):
                         logger.info("navigation impact")
                         sample = {
                             "type": "command_done",
