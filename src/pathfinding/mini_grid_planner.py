@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from collections import deque
 import heapq
+import logging
+import math
 import string
 
+
+logger = logging.getLogger(__name__)
 
 Point = tuple[int, int]
 Box = tuple[int, int, int, int]
@@ -12,6 +16,18 @@ Node = tuple[str, int, int]
 
 
 class MiniGridPlanner:
+    # Soft repulsion applied on top of euclidean step cost in A*. Mini-cells
+    # adjacent to a forbidden cell pay a per-step penalty: 1.5 when adjacent
+    # to an obstacle-blocked cell, 1.0 when adjacent to a wall-adjacent cell.
+    # Both forbidden sets are still HARD-blocked -- the path never enters
+    # them. The repulsion only biases the path toward the cleanest lane
+    # among the available cells. Linear falloff over REPULSION_RADIUS so the
+    # nudge is local: cells at d=1 pay (radius-1)*weight, cells at d>=radius
+    # pay nothing.
+    OBSTACLE_REPULSION_WEIGHT: float = 1.5
+    WALL_REPULSION_WEIGHT: float = 1.0
+    REPULSION_RADIUS: int = 2
+
     def __init__(
         self,
         divisions: int,
@@ -47,7 +63,9 @@ class MiniGridPlanner:
         if exit_mini is None:
             exit_mini = (self.divisions // 2, self.divisions // 2)
 
+        # Both obstacle-margin and wall-adjacent mini-cells are 100% forbidden.
         blocked = self._blocked_mini_cells(bounds, frame.obstacles)
+        blocked |= self._wall_adjacent_mini_cells(blocked_cell, frame)
 
         mini_path = self._shortest_path(entry, exit_mini, blocked)
         if mini_path is None:
@@ -85,7 +103,10 @@ class MiniGridPlanner:
 
         start = (start_cell, start_mini[0], start_mini[1])
         goal = (goal_cell, goal_mini[0], goal_mini[1])
-        blocked = self._blocked_nodes(bounds_by_cell, frame.obstacles, frame=frame)
+        obstacle_blocked, wall_blocked = self._classify_blocked_nodes(
+            bounds_by_cell, frame.obstacles, frame=frame,
+        )
+        blocked = obstacle_blocked | wall_blocked
 
         if start in blocked:
             start = self._nearest_unblocked_node(start, blocked, cell_set, frame)
@@ -96,7 +117,11 @@ class MiniGridPlanner:
             if goal is None:
                 return None
 
-        node_path = self._shortest_node_path(start, goal, blocked, cell_set, frame)
+        node_path = self._shortest_node_path(
+            start, goal, blocked,
+            obstacle_blocked, wall_blocked,
+            cell_set, frame,
+        )
         if node_path is None:
             return None
 
@@ -158,40 +183,34 @@ class MiniGridPlanner:
         if start in blocked or goal in blocked:
             return None
 
-        clearance_distances = self._mini_clearance_distances(blocked)
-        queue: list[tuple[int, int, int, MiniCell]] = [(-10**9, 0, 0, start)]
+        # A* on the single-cell mini-grid. Cost = euclidean distance between
+        # adjacent mini-cells (1 for orthogonal, sqrt(2) for diagonal),
+        # heuristic = euclidean distance to goal. Hard-blocked mini-cells
+        # (obstacle-margin and wall-adjacent) are never entered.
+        def heuristic(cell: MiniCell) -> float:
+            return math.hypot(cell[0] - goal[0], cell[1] - goal[1])
+
+        queue: list[tuple[float, int, MiniCell]] = [(heuristic(start), 0, start)]
         sequence = 1
         previous: dict[MiniCell, MiniCell | None] = {start: None}
-        best_score: dict[MiniCell, tuple[int, int]] = {start: (10**9, 0)}
+        best_cost: dict[MiniCell, float] = {start: 0.0}
 
         while queue:
-            negative_clearance, cost, _, current = heapq.heappop(queue)
-            clearance = -negative_clearance
-            if (clearance, cost) != best_score[current]:
-                continue
+            _, _, current = heapq.heappop(queue)
             if current == goal:
                 break
 
+            current_cost = best_cost[current]
             for neighbor in self._neighbors(current):
                 if neighbor in blocked:
                     continue
-                next_clearance = min(
-                    clearance,
-                    clearance_distances.get(neighbor, self.divisions + 1),
-                )
-                next_cost = cost + 1 + self._preferred_row_penalty(neighbor[0])
-                best_clearance, best_cost = best_score.get(neighbor, (-1, 10**9))
-                if (
-                    next_clearance < best_clearance
-                    or (
-                        next_clearance == best_clearance
-                        and next_cost >= best_cost
-                    )
-                ):
+                step = math.hypot(neighbor[0] - current[0], neighbor[1] - current[1])
+                next_cost = current_cost + step
+                if next_cost >= best_cost.get(neighbor, float("inf")):
                     continue
-                best_score[neighbor] = (next_clearance, next_cost)
+                best_cost[neighbor] = next_cost
                 previous[neighbor] = current
-                heapq.heappush(queue, (-next_clearance, next_cost, sequence, neighbor))
+                heapq.heappush(queue, (next_cost + heuristic(neighbor), sequence, neighbor))
                 sequence += 1
 
         if goal not in previous:
@@ -238,63 +257,165 @@ class MiniGridPlanner:
                 neighbors.append((nr, nc))
         return neighbors
 
-    def _blocked_nodes(
+    # Splits the per-corridor forbidden cells into (obstacle, wall_adjacent)
+    # so the A* loop can attribute the right repulsion weight to each kind
+    # while still treating every cell in the union as 100% impassable.
+    def _classify_blocked_nodes(
         self,
         bounds_by_cell: dict[str, Box],
         obstacles: list[Box],
         frame=None,
-    ) -> set[Node]:
-        blocked: set[Node] = set()
+    ) -> tuple[set[Node], set[Node]]:
+        obstacle: set[Node] = set()
+        wall: set[Node] = set()
         for cell, bounds in bounds_by_cell.items():
             for row, col in self._blocked_mini_cells(bounds, obstacles):
-                blocked.add((cell, row, col))
-        return blocked
+                obstacle.add((cell, row, col))
+            if frame is not None:
+                for row, col in self._wall_adjacent_mini_cells(cell, frame):
+                    wall.add((cell, row, col))
+        return obstacle, wall
+
+    # Mini-cells that touch a wall on the parent's perimeter. Includes the
+    # row/column along any side that has a wall plus corner mini-cells where
+    # a neighbouring cell's wall ends at the corner. Convention: walls["top"]
+    # = math-y up = image-y bottom edge, mirroring the debug renderer.
+    def _wall_adjacent_mini_cells(self, label: str, frame) -> set[MiniCell]:
+        walls = frame.grid_walls.get(label, {}) or {}
+        result: set[MiniCell] = set()
+        last = self.divisions - 1
+
+        if walls.get("bottom", False):  # image-top wall
+            for mc in range(self.divisions):
+                result.add((0, mc))
+        if walls.get("top", False):  # image-bottom wall
+            for mc in range(self.divisions):
+                result.add((last, mc))
+        if walls.get("left", False):
+            for mr in range(self.divisions):
+                result.add((mr, 0))
+        if walls.get("right", False):
+            for mr in range(self.divisions):
+                result.add((mr, last))
+
+        rc = self._cell_rc(label)
+        if rc is None:
+            return result
+        row, col = rc
+        n_rows = getattr(frame, "n_rows", 0)
+        n_cols = getattr(frame, "n_cols", 0)
+
+        def wall_present(r: int, c: int, side: str) -> bool:
+            if not (0 <= r < n_rows and 0 <= c < n_cols):
+                return False
+            neighbour = self._rc_cell(r, c)
+            if neighbour is None:
+                return False
+            return frame.grid_walls.get(neighbour, {}).get(side, False)
+
+        if wall_present(row - 1, col, "left") or wall_present(row, col - 1, "bottom"):
+            result.add((0, 0))
+        if wall_present(row - 1, col, "right") or wall_present(row, col + 1, "bottom"):
+            result.add((0, last))
+        if wall_present(row + 1, col, "left") or wall_present(row, col - 1, "top"):
+            result.add((last, 0))
+        if wall_present(row + 1, col, "right") or wall_present(row, col + 1, "top"):
+            result.add((last, last))
+
+        return result
+
+    # Multi-source BFS over the node graph, returning Chebyshev step distance
+    # from each reachable mini-cell to the nearest cell in `sources`. Truncated
+    # at `max_distance` because the repulsion field is local. Used to compute
+    # the soft potential field around each forbidden set.
+    def _node_distance_to_set(
+        self,
+        sources: set[Node],
+        allowed_cells: set[str],
+        frame,
+        max_distance: int,
+    ) -> dict[Node, int]:
+        distances: dict[Node, int] = {node: 0 for node in sources}
+        queue: deque[Node] = deque(sources)
+        while queue:
+            node = queue.popleft()
+            d = distances[node]
+            if d >= max_distance:
+                continue
+            for neighbor in self._node_neighbors(node, allowed_cells, frame, blocked=set()):
+                if neighbor in distances:
+                    continue
+                distances[neighbor] = d + 1
+                queue.append(neighbor)
+        return distances
 
     def _shortest_node_path(
         self,
         start: Node,
         goal: Node,
         blocked: set[Node],
+        obstacle_blocked: set[Node],
+        wall_blocked: set[Node],
         allowed_cells: set[str],
         frame,
     ) -> list[Node] | None:
         if start in blocked or goal in blocked:
             return None
 
-        clearance_distances = self._node_clearance_distances(allowed_cells, blocked)
-        queue: list[tuple[int, int, int, Node]] = [(-10**9, 0, 0, start)]
+        # A* in global mini-cell coordinates. Per-step cost = euclidean
+        # distance + soft repulsion potential. Repulsion is a linear-falloff
+        # field around each forbidden cell -- weight 1.5 for obstacles,
+        # 1.0 for walls -- so the path bows away from forbidden cells when
+        # the geometry leaves room. Forbidden cells stay 100% impassable;
+        # the soft field only picks the cleanest passable lane.
+        goal_global = self._global_mini_rc(*goal)
+
+        def heuristic(node: Node) -> float:
+            gr, gc = self._global_mini_rc(*node)
+            return math.hypot(gr - goal_global[0], gc - goal_global[1])
+
+        radius = self.REPULSION_RADIUS
+        obstacle_distances = self._node_distance_to_set(
+            obstacle_blocked, allowed_cells, frame, radius,
+        )
+        wall_distances = self._node_distance_to_set(
+            wall_blocked, allowed_cells, frame, radius,
+        )
+
+        def repulsion(node: Node) -> float:
+            d_o = obstacle_distances.get(node, radius + 1)
+            d_w = wall_distances.get(node, radius + 1)
+            return (
+                self.OBSTACLE_REPULSION_WEIGHT * max(0, radius - d_o)
+                + self.WALL_REPULSION_WEIGHT * max(0, radius - d_w)
+            )
+
+        queue: list[tuple[float, int, Node]] = [(heuristic(start), 0, start)]
         sequence = 1
         previous: dict[Node, Node | None] = {start: None}
-        best_score: dict[Node, tuple[int, int]] = {start: (10**9, 0)}
+        best_cost: dict[Node, float] = {start: 0.0}
 
         while queue:
-            negative_clearance, cost, _, current = heapq.heappop(queue)
-            clearance = -negative_clearance
-            if (clearance, cost) != best_score[current]:
-                continue
+            _, _, current = heapq.heappop(queue)
             if current == goal:
                 break
 
+            current_cost = best_cost[current]
+            current_global = self._global_mini_rc(*current)
             for neighbor in self._node_neighbors(current, allowed_cells, frame, blocked):
                 if neighbor in blocked:
                     continue
-                next_clearance = min(
-                    clearance,
-                    clearance_distances.get(neighbor, self.divisions + 1),
+                neighbor_global = self._global_mini_rc(*neighbor)
+                step = math.hypot(
+                    neighbor_global[0] - current_global[0],
+                    neighbor_global[1] - current_global[1],
                 )
-                next_cost = cost + 1 + self._preferred_row_penalty(neighbor[1])
-                best_clearance, best_cost = best_score.get(neighbor, (-1, 10**9))
-                if (
-                    next_clearance < best_clearance
-                    or (
-                        next_clearance == best_clearance
-                        and next_cost >= best_cost
-                    )
-                ):
+                next_cost = current_cost + step + repulsion(neighbor)
+                if next_cost >= best_cost.get(neighbor, float("inf")):
                     continue
-                best_score[neighbor] = (next_clearance, next_cost)
+                best_cost[neighbor] = next_cost
                 previous[neighbor] = current
-                heapq.heappush(queue, (-next_clearance, next_cost, sequence, neighbor))
+                heapq.heappush(queue, (next_cost + heuristic(neighbor), sequence, neighbor))
                 sequence += 1
 
         if goal not in previous:
@@ -333,57 +454,6 @@ class MiniGridPlanner:
             if next_node is not None:
                 neighbors.append(next_node)
         return neighbors
-
-    def _preferred_row_penalty(self, row: int) -> int:
-        if row in self.portal_indexes:
-            return 0
-        return 100
-
-    def _mini_clearance_distances(
-        self,
-        blocked: set[MiniCell],
-    ) -> dict[MiniCell, int]:
-        distances: dict[MiniCell, int] = {}
-        if not blocked:
-            return distances
-
-        for row in range(self.divisions):
-            for col in range(self.divisions):
-                cell = (row, col)
-                if cell in blocked:
-                    continue
-                distances[cell] = min(
-                    max(abs(row - blocked_row), abs(col - blocked_col))
-                    for blocked_row, blocked_col in blocked
-                )
-        return distances
-
-    def _node_clearance_distances(
-        self,
-        allowed_cells: set[str],
-        blocked: set[Node],
-    ) -> dict[Node, int]:
-        distances: dict[Node, int] = {}
-        if not blocked:
-            return distances
-
-        blocked_coords = [
-            self._global_mini_rc(cell, row, col)
-            for cell, row, col in blocked
-        ]
-
-        for cell in allowed_cells:
-            for row in range(self.divisions):
-                for col in range(self.divisions):
-                    node = (cell, row, col)
-                    if node in blocked:
-                        continue
-                    global_row, global_col = self._global_mini_rc(cell, row, col)
-                    distances[node] = min(
-                        max(abs(global_row - blocked_row), abs(global_col - blocked_col))
-                        for blocked_row, blocked_col in blocked_coords
-                    )
-        return distances
 
     def _global_mini_rc(self, cell: str, row: int, col: int) -> tuple[int, int]:
         parent_row, parent_col = self._cell_rc(cell) or (0, 0)

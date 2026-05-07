@@ -70,7 +70,9 @@ class NavigatorAgent(agent.Agent):
             if request is None:
                 return
 
-            logger.info(f"[REQUEST] From: {request.sender} | Body: {request.body}")
+            body = request.body or ""
+            preview = body if len(body) <= 80 else f"{body[:77]}... ({len(body)} chars)"
+            logger.info(f"[REQUEST] From: {request.sender} | Body: {preview}")
             logger.info(f"[ROBOT JID] {ROBOT_JID}")
 
             if request.body == "penality":

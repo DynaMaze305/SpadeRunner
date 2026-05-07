@@ -10,6 +10,14 @@ from typing import Awaitable, Callable, Optional
 MAX_DETECT_ATTEMPTS = 3
 RETRY_DELAY_S = 0.2
 
+# After photo retries fail, the navigator nudges the robot by small rotations
+# to bring its ArUco back into view (e.g. when a wall is occluding the marker).
+# Each recovery attempt rotates by ARUCO_RECOVERY_ROTATE_DEG, sleeps to let
+# the motion + camera settle, takes a fresh photo, and retries detection.
+ARUCO_RECOVERY_ROTATIONS = 4
+ARUCO_RECOVERY_ROTATE_DEG = 10.0
+ARUCO_RECOVERY_SLEEP_S = 1.0
+
 from common.config import TARGET_ARUCO_ID
 
 from agents.navigator.config import NavigatorConfig
@@ -237,14 +245,67 @@ class NavigationOrchestrator:
                 )
                 robot = self.localizer.locate(frame)
 
-            # All retries exhausted, skip this step instead of killing the run
+            # Photo retries exhausted: nudge the robot with a small rotation
+            # and try again. ArUcos can vanish when a wall is occluding the
+            # marker; rotating brings them back into view.
             if robot is None:
                 logger.warning(
-                    f"[ROBOT] aruco not detected after {MAX_DETECT_ATTEMPTS} attempts, "
-                    f"skipping step {step}"
+                    f"[ROBOT] aruco not detected after {MAX_DETECT_ATTEMPTS} "
+                    f"photo attempts, entering rotation recovery"
                 )
-                self._save_debug(step, image=frame.image, frame=frame, robot_pose=None, path=None)
-                continue
+                for rot_attempt in range(1, ARUCO_RECOVERY_ROTATIONS + 1):
+                    logger.info(
+                        f"[ROBOT] recovery rotation {rot_attempt}/"
+                        f"{ARUCO_RECOVERY_ROTATIONS}: "
+                        f"+{ARUCO_RECOVERY_ROTATE_DEG:.0f} deg"
+                    )
+                    ok = await self.executor.rotate(ARUCO_RECOVERY_ROTATE_DEG)
+                    if not ok:
+                        logger.error(
+                            "[ROBOT] rotation command failed during recovery"
+                        )
+                        break
+                    await asyncio.sleep(ARUCO_RECOVERY_SLEEP_S)
+
+                    recovery_bytes = await self.photo_source("navigator-recovery")
+                    if recovery_bytes is None:
+                        continue
+                    if cached_frame is not None:
+                        recovery_frame = self.vision.analyze_with_cached_maze(
+                            recovery_bytes, cached_frame,
+                        )
+                    else:
+                        recovery_frame = self.vision.analyze(recovery_bytes)
+                    if isinstance(recovery_frame, VisionError):
+                        continue
+                    frame = recovery_frame
+                    robot = self.localizer.locate(frame)
+                    if robot is not None:
+                        logger.info(
+                            f"[ROBOT] aruco recovered after rotation {rot_attempt}"
+                        )
+                        break
+
+            # Recovery exhausted -- stop the navigator.
+            if robot is None:
+                logger.error(
+                    f"[ROBOT] aruco still not detected after "
+                    f"{ARUCO_RECOVERY_ROTATIONS} rotation recovery attempts, "
+                    f"stopping navigator"
+                )
+                self._save_debug(
+                    step, image=frame.image, frame=frame,
+                    robot_pose=None, path=None,
+                )
+                return NavigationResult(
+                    NavigationOutcome.FAILED_NO_ROBOT,
+                    last_cell=last_cell,
+                    steps_taken=step,
+                    message=(
+                        f"aruco missing after {ARUCO_RECOVERY_ROTATIONS} "
+                        f"rotation recovery attempts"
+                    ),
+                )
 
             current_cell = robot.cell
             current_angle = robot.angle_deg
@@ -593,21 +654,24 @@ class NavigationOrchestrator:
         if not point_path:
             return None
 
-        # The point path is rebuilt from the detected robot center on every
-        # frame, so its first point is the current snapped mini-grid node. Using
-        # the closest point anywhere in the path can skip ahead when the robot is
-        # inside a blocked cell and physically near a later mini-route segment.
+        # `_post_process_point_path` collapses each free cell to its centre,
+        # so point_path[0] is the centre of the cell the robot is currently
+        # in, point_path[1] is the centre of the next cell, and so on.
+        # Strategy: while we are not yet at point_path[0] (i.e. not centred
+        # on the current cell), aim at point_path[0]. Only once we have
+        # arrived there do we advance to point_path[1]. This way the robot
+        # always centres on the cell it sits in before heading to the next.
         snapped_current_node = point_path[0]
         snapped_distance_px = math.dist(robot_local_pos, snapped_current_node)
 
-        for next_index in range(1, len(point_path)):
-            waypoint = point_path[next_index]
-            if math.dist(robot_local_pos, waypoint) > reached_px:
-                return (waypoint, snapped_current_node, snapped_distance_px)
-
         if snapped_distance_px > reached_px:
-            return (snapped_current_node, snapped_current_node, snapped_distance_px)
+            return (point_path[0], snapped_current_node, snapped_distance_px)
 
+        # We are on point_path[0]. If there's a next waypoint, aim at it.
+        if len(point_path) >= 2:
+            return (point_path[1], snapped_current_node, snapped_distance_px)
+
+        # No further waypoints -- navigation is complete.
         return None
 
     @staticmethod
