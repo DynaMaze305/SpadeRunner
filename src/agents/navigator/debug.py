@@ -478,12 +478,17 @@ class NavigatorDebug:
             return None
         return (row, col)
 
-    # Returns the set of (mini_row, mini_col) positions that should be marked
-    # as wall-adjacent for the parent cell `label`. Includes:
+    # Returns the set of (mini_row, mini_col) image-space positions that
+    # should be marked as wall-adjacent for the parent cell `label`. Includes:
     #  - the row/column along any side of the parent that has a wall, AND
     #  - corner mini-cells when a wall of a neighbouring cell ends at that
-    #    corner (e.g. the wall between B5 and B6 makes C5's top-right
+    #    corner (e.g. the wall between B5 and B6 makes C5's image-top-right
     #    mini-cell wall-adjacent even though no side of C5 itself has a wall).
+    #
+    # Convention reminder (matches MazeGridAnalyzer + robot_grid_localizer
+    # _draw_walls): walls["top"] = math-y up = image-y bottom edge, and
+    # walls["bottom"] = math-y down = image-y top edge. Mini-rows here are in
+    # image space, with mr=0 at the image-top of the parent cell.
     @staticmethod
     def _wall_adjacent_minis(
         frame, label: str, divisions: int,
@@ -491,10 +496,11 @@ class NavigatorDebug:
         walls = frame.grid_walls.get(label, {}) or {}
         result: set[tuple[int, int]] = set()
 
-        if walls.get("top", False):
+        # Side walls (mr=0 is image-top, mr=divisions-1 is image-bottom).
+        if walls.get("bottom", False):  # image-top wall
             for mc in range(divisions):
                 result.add((0, mc))
-        if walls.get("bottom", False):
+        if walls.get("top", False):  # image-bottom wall
             for mc in range(divisions):
                 result.add((divisions - 1, mc))
         if walls.get("left", False):
@@ -519,17 +525,18 @@ class NavigatorDebug:
             neighbour_label = chr(ord("A") + r) + str(c + 1)
             return frame.grid_walls.get(neighbour_label, {}).get(side, False)
 
-        # top-left corner: above's left wall, or left's top wall
-        if wall_present(row - 1, col, "left") or wall_present(row, col - 1, "top"):
+        # image-top-left corner: above's left wall (vertical above the corner)
+        # OR left neighbour's image-top wall (= left's "bottom" key).
+        if wall_present(row - 1, col, "left") or wall_present(row, col - 1, "bottom"):
             result.add((0, 0))
-        # top-right corner: above's right wall, or right's top wall
-        if wall_present(row - 1, col, "right") or wall_present(row, col + 1, "top"):
+        # image-top-right corner: above's right wall OR right's image-top wall.
+        if wall_present(row - 1, col, "right") or wall_present(row, col + 1, "bottom"):
             result.add((0, divisions - 1))
-        # bottom-left corner: below's left wall, or left's bottom wall
-        if wall_present(row + 1, col, "left") or wall_present(row, col - 1, "bottom"):
+        # image-bottom-left corner: below's left wall OR left's image-bottom wall.
+        if wall_present(row + 1, col, "left") or wall_present(row, col - 1, "top"):
             result.add((divisions - 1, 0))
-        # bottom-right corner: below's right wall, or right's bottom wall
-        if wall_present(row + 1, col, "right") or wall_present(row, col + 1, "bottom"):
+        # image-bottom-right corner: below's right wall OR right's image-bottom wall.
+        if wall_present(row + 1, col, "right") or wall_present(row, col + 1, "top"):
             result.add((divisions - 1, divisions - 1))
 
         return result
