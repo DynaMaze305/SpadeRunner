@@ -62,16 +62,6 @@ class NavigatorAgent(agent.Agent):
         self.paired = False
 
     class NavigatorListenner(behaviour.CyclicBehaviour):
-        async def request_boulder_pick(
-            self,
-            boulder_position_m: dict[str, float],
-        ) -> None:
-            msg = Message(to=UR_JID)
-            msg.set_metadata("performative", "request")
-            msg.body = f"pick {json.dumps({'pick': boulder_position_m})}"
-            await self.send(msg)
-            logger.info(f"[NAV] requested {UR_JID} pick_boulder {msg.body}")
-
         async def run(self):
             cfg: NavigatorConfig = self.agent.cfg
 
@@ -238,6 +228,16 @@ class NavigatorAgent(agent.Agent):
             msg.body = json.dumps(data)
             await self.send(msg)
             logger.info(f"[NAV] notified {TELEMETRY_JID}: image {image_path}")
+
+        async def request_boulder_pick(
+            self,
+            boulder_position_m: dict[str, float],
+        ) -> None:
+            msg = Message(to=UR_JID)
+            msg.set_metadata("performative", "request")
+            msg.body = f"pick {json.dumps({'pick': boulder_position_m})}"
+            await self.send(msg)
+            logger.info(f"[NAV] requested {UR_JID} pick_boulder {msg.body}")
 
         async def run(self):
             if self.agent.paused:
