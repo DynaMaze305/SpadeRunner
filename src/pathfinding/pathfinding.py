@@ -31,12 +31,12 @@ def solve_from_frame(
 
     solver = MazeSolver()
     baseline = _baseline_blocked(start_cell, end_cell)
+    obstacle_blocked = obstacle_cells_from_frame(
+        frame,
+        ignored_cells={start_cell, end_cell},
+    )
 
     if avoid_obstacles:
-        obstacle_blocked = obstacle_cells_from_frame(
-            frame,
-            ignored_cells={start_cell, end_cell},
-        )
         full_blocked = baseline | obstacle_blocked
         if full_blocked:
             obstacle_aware_path = solver.shortest_path(
@@ -50,6 +50,12 @@ def solve_from_frame(
             if obstacle_aware_path is not None:
                 return obstacle_aware_path
 
+    # Fallback: orthogonal A* tolerates obstacle cells (so the planner can
+    # still find SOMETHING when there's no obstacle-free route), but the
+    # diagonal corner-cutting check still rejects any step where one of the
+    # 4 cells around the diagonal is a real obstacle. This prevents the
+    # diagonal-clip-through-blocked-cell behaviour observed e.g. in
+    # navigation_159/step_17.
     return solver.shortest_path(
         grid_walls=frame.grid_walls,
         start_cell=start_cell,
@@ -57,6 +63,7 @@ def solve_from_frame(
         n_rows=frame.n_rows,
         n_cols=frame.n_cols,
         blocked_cells=baseline,
+        diagonal_block_cells=baseline | obstacle_blocked,
     )
 
 

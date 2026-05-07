@@ -22,6 +22,7 @@ class MazeSolver:
         n_rows: int,
         n_cols: int,
         blocked_cells: set[str] | None = None,
+        diagonal_block_cells: set[str] | None = None,
         allow_diagonal: bool = True,
     ) -> list[str] | None:
         # Create row labels based on the maze height: A, B, C, ...
@@ -47,6 +48,13 @@ class MazeSolver:
             return None
 
         blocked_cells = blocked_cells or set()
+        # Diagonal corner-cutting check uses its own (possibly stricter) set.
+        # Defaults to blocked_cells so callers that don't care keep the old
+        # behaviour. solve_from_frame's obstacle-tolerant fallback passes a
+        # superset here so diagonals still respect obstacle cells even when
+        # the orthogonal A* is allowed to step on them.
+        if diagonal_block_cells is None:
+            diagonal_block_cells = blocked_cells
         if start_cell in blocked_cells or end_cell in blocked_cells:
             return None
 
@@ -84,6 +92,7 @@ class MazeSolver:
                 rc_to_label,
                 in_bounds,
                 blocked_cells,
+                diagonal_block_cells,
                 allow_diagonal,
             ):
                 if neighbor in blocked_cells:
@@ -120,6 +129,7 @@ class MazeSolver:
         rc_to_label,
         in_bounds,
         blocked_cells: set[str],
+        diagonal_block_cells: set[str],
         allow_diagonal: bool,
     ) -> list[tuple[str, float]]:
         neighbors: list[tuple[str, float]] = []
@@ -144,10 +154,12 @@ class MazeSolver:
                 vertical_cell = rc_to_label(r + vertical_dr, c + vertical_dc)
                 horizontal_cell = rc_to_label(r + horizontal_dr, c + horizontal_dc)
 
+                current_cell = rc_to_label(r, c)
                 if (
-                    diagonal_cell in blocked_cells
-                    or vertical_cell in blocked_cells
-                    or horizontal_cell in blocked_cells
+                    current_cell in diagonal_block_cells
+                    or diagonal_cell in diagonal_block_cells
+                    or vertical_cell in diagonal_block_cells
+                    or horizontal_cell in diagonal_block_cells
                 ):
                     continue
 
