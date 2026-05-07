@@ -53,6 +53,11 @@ class NavigatorConfig:
     rotation_tolerance_deg: float = 2.0
     max_rotation_attempts: int = 3
 
+    # How long the navigator pauses AFTER each motion ack (move OR rotate)
+    # before continuing the loop. Lets the chassis physically stop so the
+    # next photo isn't taken mid-motion. Set to 0 to disable.
+    post_motion_settle_s: float = 1.0
+
     # Pixel-to-millimetre conversion for the camera-cropped maze view.
     # Cell width is 200 mm, average detected cell width is ~67.5 px -> ~2.96 mm/px.
     mm_per_pixel: float = 2.96
@@ -158,6 +163,12 @@ class NavigatorConfig:
             ),
             max_rotation_attempts=int(
                 os.getenv("NAVIGATOR_MAX_ROTATION_ATTEMPTS", "3")
+            ),
+            post_motion_settle_s=float(
+                os.getenv(
+                    "NAVIGATOR_POST_MOTION_SETTLE_S",
+                    str(cls.post_motion_settle_s),
+                )
             ),
             mm_per_pixel=float(
                 os.getenv("NAVIGATOR_MM_PER_PIXEL", str(cls.mm_per_pixel))
