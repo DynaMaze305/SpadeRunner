@@ -6,7 +6,7 @@
 
 import os
 
-COORDINATOR_HOST = os.getenv("XMPP_DOMAIN", "isc-coordinator2.lan")
+COORDINATOR_HOST = os.environ["XMPP_DOMAIN"]
 ROBOT_NUM = os.getenv("ROBOT_NUM", "1")
 ROBOT_FILTRE = f"alphabot2{ROBOT_NUM}-agent"
 
@@ -33,9 +33,9 @@ RECEIVER_JID = f"camera-receiver-{ROBOT_FILTRE}@{COORDINATOR_HOST}"
 
 # Agent extern to the AlphaBot2-Pi
 TELEMETRY_JID = f"telemetry@{COORDINATOR_HOST}"
-CAMERA_JID = f"camera_agent@{COORDINATOR_HOST if COORDINATOR_HOST != 'prosody' else 'isc-coordinator2.lan'}"
-TIMEKEEPER_JID = f"timekeeper@{COORDINATOR_HOST if COORDINATOR_HOST != 'prosody' else 'isc-coordinator2.lan'}"
-UR_JID = f"ur-agent@{COORDINATOR_HOST if COORDINATOR_HOST != 'prosody' else 'isc-coordinator2.lan'}"
+CAMERA_JID = os.getenv("CAMERA_JID", f"camera_agent@{COORDINATOR_HOST}")
+TIMEKEEPER_JID = os.getenv("TIMEKEEPER_JID", f"timekeeper@{COORDINATOR_HOST}")
+UR_JID = os.getenv("UR_JID", f"ur-agent@{COORDINATOR_HOST}")
 
 def agent_jid(user: str) -> str:
     return f"{user}@{COORDINATOR_HOST}"
