@@ -445,12 +445,24 @@ class NavigationOrchestrator:
                 ok = await self.executor.execute_command(command)
                 if not ok:
                     return False
+                await self._post_motion_settle(label="move")
 
             else:
                 logger.warning(f"Unknown motion command: {command}")
                 return False
 
         return True
+
+    # Holds the navigator idle for cfg.post_motion_settle_s after every
+    # successful motion ack so the chassis has time to physically stop /
+    # the next photo isn't taken mid-motion. Set the env var
+    # NAVIGATOR_POST_MOTION_SETTLE_S=0 to disable entirely.
+    async def _post_motion_settle(self, label: str) -> None:
+        delay = self.config.post_motion_settle_s
+        if delay <= 0:
+            return
+        logger.info(f"[NAV] settle {delay:.2f}s after {label}")
+        await asyncio.sleep(delay)
 
     async def _rotate_with_correction(
         self,
@@ -467,6 +479,7 @@ class NavigationOrchestrator:
             ok = await self.executor.rotate(delta)
             if not ok:
                 return False
+            await self._post_motion_settle(label=f"rotate-{attempt}")
 
             # Last allowed attempt -> commit, no point re-measuring.
             if attempt + 1 >= cfg.max_rotation_attempts:
