@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import logging
+
 from pathfinding.mini_grid_planner import MiniGridPlanner
 from pathfinding.pathfinding import obstacle_cells_from_frame, solve_from_frame
+
+logger = logging.getLogger(__name__)
 
 
 # Thin wrapper around solve_from_frame; here so the orchestrator depends on
@@ -70,6 +74,9 @@ class PathPlanner:
         goal_point: tuple[int, int],
     ) -> list[tuple[int, int]] | None:
         blocked_cells = obstacle_cells_from_frame(frame)
+        logger.info(
+            f"[PLAN-DEBUG] coarse_path={coarse_path} blocked_cells={sorted(blocked_cells)}"
+        )
         points: list[tuple[int, int]] = []
         protected_points: set[tuple[int, int]] = set()
         index = 0
@@ -103,6 +110,10 @@ class PathPlanner:
                 after_index=after_index,
                 goal_point=goal_point,
             )
+            logger.info(
+                f"[PLAN-DEBUG] corridor for {coarse_path[index]}: "
+                f"cells={corridor_cells} start={corridor_start} goal={corridor_goal}"
+            )
             mini_points = self.mini_grid_planner.plan_cell_sequence(
                 frame=frame,
                 cells=corridor_cells,
@@ -112,6 +123,9 @@ class PathPlanner:
             if not mini_points:
                 expanded_cells = self._expanded_corridor_cells(frame, corridor_cells)
                 if expanded_cells != corridor_cells:
+                    logger.info(
+                        f"[PLAN-DEBUG] primary corridor failed; expanded={expanded_cells}"
+                    )
                     mini_points = self.mini_grid_planner.plan_cell_sequence(
                         frame=frame,
                         cells=expanded_cells,
@@ -120,6 +134,9 @@ class PathPlanner:
                     )
             if not mini_points:
                 return None
+            logger.info(
+                f"[PLAN-DEBUG] corridor mini_points ({len(mini_points)}): {mini_points}"
+            )
 
             for point in mini_points:
                 if not points or points[-1] != point:
