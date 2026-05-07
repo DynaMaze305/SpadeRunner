@@ -8,7 +8,7 @@ import string
 import cv2
 import numpy as np
 
-from pathfinding.pathfinding import obstacle_cells_from_frame
+from pathfinding.pathfinding import OUT_OF_GAME_CELLS, obstacle_cells_from_frame
 from vision.camera import Camera
 from vision.robot_grid_localizer import RobotGridLocalizer
 
@@ -60,6 +60,9 @@ BLOCKED_CELL_ALPHA = 0.28
 BLOCKED_MINI_CELL_COLOR = (40, 40, 140)
 # Lighter red for mini-cells that touch a wall side of the parent cell.
 WALL_ADJACENT_MINI_CELL_COLOR = (80, 80, 220)
+# Near-black fill used to paint over cells declared "out of game". Drawn last
+# in the path panel so it covers any path / mini-grid / blocked overlay.
+OUT_OF_GAME_CELL_COLOR = (20, 20, 20)
 RAW_OBSTACLE_COLOR = (0, 0, 255)
 INFLATED_OBSTACLE_COLOR = (255, 0, 255)
 ROBOT_EXCLUSION_COLOR = (255, 255, 0)
@@ -341,7 +344,17 @@ class NavigatorDebug:
                 )
                 y_text += PATH_TEXT_LINE_HEIGHT
 
+        self._draw_out_of_game_cells(canvas, frame)
+
         return canvas
+
+    def _draw_out_of_game_cells(self, canvas: np.ndarray, frame) -> None:
+        for cell in OUT_OF_GAME_CELLS:
+            bounds = self._cell_bounds(cell, frame.x_lines, frame.y_lines)
+            if bounds is None:
+                continue
+            x1, y1, x2, y2 = bounds
+            cv2.rectangle(canvas, (x1, y1), (x2, y2), OUT_OF_GAME_CELL_COLOR, -1)
 
     def _draw_mini_grid_for_points(
         self,
@@ -630,7 +643,7 @@ class NavigatorDebug:
         frame,
         point_path: list[tuple[int, int]] | None = None,
     ) -> None:
-        blocked_cells = obstacle_cells_from_frame(frame)
+        blocked_cells = obstacle_cells_from_frame(frame) - OUT_OF_GAME_CELLS
         if not blocked_cells:
             return
 
