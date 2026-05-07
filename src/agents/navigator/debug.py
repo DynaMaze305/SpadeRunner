@@ -175,7 +175,7 @@ class NavigatorDebug:
         path_panel = self._panel(path_img, "path")
 
         row1 = cv2.hconcat([raw_panel, crop_panel, wall_panel, grid_panel])
-        row2 = cv2.hconcat([aruco_panel, robot_panel, obstacle_panel, path_panel])
+        row2 = cv2.hconcat([aruco_panel, obstacle_panel, robot_panel, path_panel])
         composite = cv2.vconcat([row1, row2])
 
         out_path = os.path.join(self.run_dir, f"step_{step}.jpg")

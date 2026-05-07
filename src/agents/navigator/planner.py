@@ -132,7 +132,104 @@ class PathPlanner:
 
             i = run_end
 
-        return new_path
+        return self._recompute_orange_runs(new_path, frame)
+
+    # After collapsing free / pink cells to single-centre waypoints, the
+    # orange (blocked) cells still hold mini-grid waypoints that were
+    # originally planned for the OLD entry/exit points (mini-cells at the
+    # corridor edges). The new path now enters/exits each orange run from
+    # the centre of the bordering free cell, so the original trail no
+    # longer joins cleanly. Re-plan each contiguous orange run with the
+    # new before-centre as start and the new after-centre as goal, and
+    # keep only the waypoints that fall inside the orange cells.
+    def _recompute_orange_runs(
+        self,
+        path: list[tuple[int, int]],
+        frame,
+    ) -> list[tuple[int, int]]:
+        if not path or self.mini_grid_planner is None:
+            return path
+
+        mp = self.mini_grid_planner
+        x_lines = frame.x_lines
+        y_lines = frame.y_lines
+        blocked_cells = obstacle_cells_from_frame(frame)
+        if not blocked_cells:
+            return path
+
+        point_cells = [mp._point_cell(pt, x_lines, y_lines) for pt in path]
+
+        result: list[tuple[int, int]] = []
+        i = 0
+        while i < len(path):
+            cell = point_cells[i]
+            if cell is None or cell not in blocked_cells:
+                result.append(path[i])
+                i += 1
+                continue
+
+            run_start = i
+            while i < len(path) and point_cells[i] in blocked_cells:
+                i += 1
+            run_end = i  # exclusive
+
+            run_orange_cells: list[str] = []
+            seen_orange: set[str] = set()
+            for k in range(run_start, run_end):
+                c = point_cells[k]
+                if c is not None and c not in seen_orange:
+                    seen_orange.add(c)
+                    run_orange_cells.append(c)
+
+            if not result or run_end >= len(path):
+                result.extend(path[run_start:run_end])
+                logger.info(
+                    f"[PLAN-DEBUG] post-process: orange run {run_orange_cells} "
+                    f"at path edge -- keeping original mini-grid"
+                )
+                continue
+
+            before_point = result[-1]
+            after_point = path[run_end]
+            before_cell = mp._point_cell(before_point, x_lines, y_lines)
+            after_cell = point_cells[run_end]
+
+            if before_cell is None or after_cell is None:
+                result.extend(path[run_start:run_end])
+                continue
+
+            corridor: list[str] = []
+            for c in [before_cell] + run_orange_cells + [after_cell]:
+                if c not in corridor:
+                    corridor.append(c)
+
+            new_mini = mp.plan_cell_sequence(
+                frame=frame,
+                cells=corridor,
+                start_point=before_point,
+                goal_point=after_point,
+            )
+
+            if not new_mini:
+                result.extend(path[run_start:run_end])
+                logger.warning(
+                    f"[PLAN-DEBUG] post-process: re-plan failed for orange "
+                    f"run {run_orange_cells}; keeping original {run_end - run_start} pts"
+                )
+                continue
+
+            kept = [
+                pt for pt in new_mini
+                if mp._point_cell(pt, x_lines, y_lines) in blocked_cells
+            ]
+            result.extend(kept)
+            logger.info(
+                f"[PLAN-DEBUG] post-process: re-planned orange run "
+                f"{run_orange_cells} from {before_cell} centre -> {after_cell} centre "
+                f"({len(new_mini)} mini -> {len(kept)} kept)"
+            )
+
+        return result
 
     def _candidate_coarse_paths(
         self,
