@@ -70,6 +70,16 @@ OUT_OF_GAME_CELL_COLOR = (20, 20, 20)
 RAW_OBSTACLE_COLOR = (0, 0, 255)
 INFLATED_OBSTACLE_COLOR = (255, 0, 255)
 ROBOT_EXCLUSION_COLOR = (0, 165, 255)
+# Orange square drawn around each detected enemy ArUco on the robot panel.
+ENEMY_MARKER_COLOR = (0, 165, 255)
+# Solid red overlay used to mark enemy cells on the path panel (vs the
+# softer red used for static blocked obstacle cells).
+ENEMY_CELL_COLOR = (0, 0, 220)
+ENEMY_CELL_ALPHA = 0.40
+# Solid green overlay used to flag the cell where the robot is currently
+# stopped because no valid path was found this step.
+STOPPED_CELL_COLOR = (0, 220, 0)
+STOPPED_CELL_ALPHA = 0.45
 
 # Target-direction arrow + path info text overlay (BGR).
 TARGET_ARROW_COLOR = (0, 180, 0)
@@ -114,6 +124,8 @@ class NavigatorDebug:
         path: list[str] | None = None,
         point_path: list[tuple[int, int]] | None = None,
         next_waypoint: tuple[int, int] | None = None,
+        enemies: list | None = None,
+        stopped_cell: str | None = None,
     ) -> None:
         image_with_axes = self.camera.draw_axes(image) if image is not None else None
 
@@ -150,9 +162,12 @@ class NavigatorDebug:
                     y_lines=frame.y_lines,
                     grid_walls=frame.grid_walls,
                 )
+                if enemies and robot_img is not None:
+                    self._draw_enemy_markers_on_robot(robot_img, enemies)
 
         path_img = self._build_path_panel(
             frame, robot_pose, path, point_path, next_waypoint,
+            enemies, stopped_cell,
         )
         obstacles_img = self._build_obstacles_panel(frame)
 
@@ -232,6 +247,8 @@ class NavigatorDebug:
         path: list[str] | None,
         point_path: list[tuple[int, int]] | None = None,
         next_waypoint: tuple[int, int] | None = None,
+        enemies: list | None = None,
+        stopped_cell: str | None = None,
     ) -> np.ndarray | None:
         if frame is None:
             return None
@@ -366,9 +383,103 @@ class NavigatorDebug:
                 )
                 y_text += PATH_TEXT_LINE_HEIGHT
 
+        if enemies:
+            self._draw_enemy_cells(canvas, frame, enemies)
+        if stopped_cell:
+            self._draw_stopped_cell(canvas, frame, stopped_cell)
         self._draw_out_of_game_cells(canvas, frame)
 
         return canvas
+
+    def _draw_stopped_cell(self, canvas: np.ndarray, frame, cell: str) -> None:
+        bounds = self._cell_bounds(cell, frame.x_lines, frame.y_lines)
+        if bounds is None:
+            return
+        x1, y1, x2, y2 = bounds
+        overlay = canvas.copy()
+        cv2.rectangle(overlay, (x1, y1), (x2, y2), STOPPED_CELL_COLOR, -1)
+        cv2.rectangle(canvas, (x1, y1), (x2, y2), STOPPED_CELL_COLOR, 3)
+        (tw, th), _ = cv2.getTextSize(
+            "WAIT", LABEL_FONT, CELL_LABEL_SCALE * 1.3, CELL_LABEL_THICK + 1,
+        )
+        cx = (x1 + x2) // 2
+        cy = (y1 + y2) // 2
+        cv2.putText(
+            canvas,
+            "WAIT",
+            (cx - tw // 2, cy + th // 2),
+            LABEL_FONT,
+            CELL_LABEL_SCALE * 1.3,
+            STOPPED_CELL_COLOR,
+            CELL_LABEL_THICK + 1,
+            cv2.LINE_AA,
+        )
+        cv2.addWeighted(
+            overlay,
+            STOPPED_CELL_ALPHA,
+            canvas,
+            1.0 - STOPPED_CELL_ALPHA,
+            0,
+            canvas,
+        )
+
+    def _draw_enemy_cells(self, canvas: np.ndarray, frame, enemies) -> None:
+        if not enemies:
+            return
+        overlay = canvas.copy()
+        for enemy in enemies:
+            bounds = self._cell_bounds(enemy.cell, frame.x_lines, frame.y_lines)
+            if bounds is None:
+                continue
+            x1, y1, x2, y2 = bounds
+            cv2.rectangle(overlay, (x1, y1), (x2, y2), ENEMY_CELL_COLOR, -1)
+            cv2.rectangle(canvas, (x1, y1), (x2, y2), ENEMY_CELL_COLOR, 2)
+            (tw, th), _ = cv2.getTextSize(
+                "EN", LABEL_FONT, CELL_LABEL_SCALE * 1.3, CELL_LABEL_THICK + 1,
+            )
+            cx = (x1 + x2) // 2
+            cy = (y1 + y2) // 2
+            cv2.putText(
+                canvas,
+                "EN",
+                (cx - tw // 2, cy + th // 2),
+                LABEL_FONT,
+                CELL_LABEL_SCALE * 1.3,
+                ENEMY_CELL_COLOR,
+                CELL_LABEL_THICK + 1,
+                cv2.LINE_AA,
+            )
+        cv2.addWeighted(
+            overlay,
+            ENEMY_CELL_ALPHA,
+            canvas,
+            1.0 - ENEMY_CELL_ALPHA,
+            0,
+            canvas,
+        )
+
+    @staticmethod
+    def _draw_enemy_markers_on_robot(canvas: np.ndarray, enemies) -> None:
+        if not enemies or canvas is None:
+            return
+        for enemy in enemies:
+            corners = enemy.corners
+            if corners is None or len(corners) == 0:
+                continue
+            pts = corners.reshape(-1, 2).astype(int)
+            cv2.polylines(canvas, [pts], True, ENEMY_MARKER_COLOR, 2)
+            label_x = int(pts[:, 0].mean())
+            label_y = int(pts[:, 1].min()) - 6
+            cv2.putText(
+                canvas,
+                f"EN {enemy.marker_id}",
+                (label_x, max(12, label_y)),
+                LABEL_FONT,
+                0.5,
+                ENEMY_MARKER_COLOR,
+                2,
+                cv2.LINE_AA,
+            )
 
     def _draw_out_of_game_cells(self, canvas: np.ndarray, frame) -> None:
         for cell in OUT_OF_GAME_CELLS:

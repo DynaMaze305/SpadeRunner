@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import string
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -25,16 +26,25 @@ logger = logging.getLogger(__name__)
 NON_ENEMY_IDS: frozenset[int] = frozenset({ARUCO_ID, 1, 2})
 
 
-def detect_enemy_cells(frame, aruco_detector) -> set[str]:
+# One detected enemy marker. `corners` are in FULL-image pixel coords (the
+# robot debug panel is drawn on the full image, not the crop).
+@dataclass
+class EnemyMarker:
+    marker_id: int
+    cell: str
+    corners: np.ndarray
+
+
+def detect_enemies(frame, aruco_detector) -> list[EnemyMarker]:
     if frame is None or getattr(frame, "image", None) is None:
-        return set()
+        return []
 
     corners_list, ids, _ = aruco_detector.detect(frame.image)
     if ids is None or corners_list is None:
-        return set()
+        return []
 
     crop_x1, crop_y1 = frame.maze["crop_bbox"][:2]
-    enemies: set[str] = set()
+    enemies: list[EnemyMarker] = []
 
     for marker_corners, marker_id in zip(corners_list, ids.flatten()):
         marker_id = int(marker_id)
@@ -51,10 +61,14 @@ def detect_enemy_cells(frame, aruco_detector) -> set[str]:
         if cell is None:
             continue
 
-        enemies.add(cell)
+        enemies.append(EnemyMarker(marker_id=marker_id, cell=cell, corners=pts))
         logger.info(f"[ENEMY] aruco {marker_id} -> cell {cell}")
 
     return enemies
+
+
+def detect_enemy_cells(frame, aruco_detector) -> set[str]:
+    return {e.cell for e in detect_enemies(frame, aruco_detector)}
 
 
 def _cell_for_local_point(
