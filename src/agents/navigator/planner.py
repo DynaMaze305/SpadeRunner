@@ -44,9 +44,89 @@ class PathPlanner:
                 goal_point=goal_point,
             )
             if point_path is not None:
-                return point_path
+                return self._post_process_point_path(point_path, frame)
 
         return None
+
+    # Cleans up the point_path so non-corridor cells (cells that ended up with
+    # multiple waypoints only because the expanded mini-grid corridor swept
+    # them up) collapse to a single centre waypoint. Corridor entry/exit
+    # cells (free cells grid-adjacent to a traversed blocked cell on the
+    # final path) keep their mini-grid waypoints AND additionally have their
+    # cell centre forced into the trail. Blocked cells keep mini-grid as-is.
+    def _post_process_point_path(
+        self,
+        point_path: list[tuple[int, int]],
+        frame,
+    ) -> list[tuple[int, int]]:
+        if not point_path or self.mini_grid_planner is None:
+            return point_path
+
+        mp = self.mini_grid_planner
+        x_lines = frame.x_lines
+        y_lines = frame.y_lines
+
+        point_cells = [mp._point_cell(pt, x_lines, y_lines) for pt in point_path]
+
+        blocked_cells = obstacle_cells_from_frame(frame)
+        visited_cells = {c for c in point_cells if c is not None}
+        traversed_blocked = blocked_cells & visited_cells
+        traversed_blocked_rcs = set()
+        for cell in traversed_blocked:
+            rc = mp._cell_rc(cell)
+            if rc is not None:
+                traversed_blocked_rcs.add(rc)
+
+        def is_pink(cell: str) -> bool:
+            rc = mp._cell_rc(cell)
+            if rc is None:
+                return False
+            return any(
+                abs(rc[0] - br) + abs(rc[1] - bc) == 1
+                for br, bc in traversed_blocked_rcs
+            )
+
+        new_path: list[tuple[int, int]] = []
+        i = 0
+        while i < len(point_path):
+            cell = point_cells[i]
+            if cell is None:
+                new_path.append(point_path[i])
+                i += 1
+                continue
+
+            run_end = i
+            while run_end < len(point_path) and point_cells[run_end] == cell:
+                run_end += 1
+            run = list(point_path[i:run_end])
+
+            bounds = mp._cell_bounds(cell, x_lines, y_lines)
+            if bounds is not None:
+                center = (
+                    (bounds[0] + bounds[2]) // 2,
+                    (bounds[1] + bounds[3]) // 2,
+                )
+            else:
+                center = run[len(run) // 2]
+
+            if cell in blocked_cells:
+                new_path.extend(run)
+            elif is_pink(cell):
+                if center not in run:
+                    run.append(center)
+                new_path.extend(run)
+                logger.info(f"[PLAN-DEBUG] post-process: pink {cell} centre={center}")
+            else:
+                new_path.append(center)
+                if len(run) > 1:
+                    logger.info(
+                        f"[PLAN-DEBUG] post-process: collapsed {cell} "
+                        f"({len(run)} pts -> 1 centre={center})"
+                    )
+
+            i = run_end
+
+        return new_path
 
     def _candidate_coarse_paths(
         self,

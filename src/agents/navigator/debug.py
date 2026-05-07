@@ -54,6 +54,10 @@ ARROW_THICK = 2
 BLOCKED_CELL_COLOR = (80, 80, 255)
 TRAVERSED_BLOCKED_CELL_COLOR = (0, 165, 255)
 BLOCKED_CELL_ALPHA = 0.28
+# Dark red fill for individual mini-cells whose bounds intersect any inflated
+# obstacle (i.e. mini-cells the planner cannot step on). Drawn inside cells
+# that received a mini-grid overlay so the unreachable areas are obvious.
+BLOCKED_MINI_CELL_COLOR = (40, 40, 140)
 RAW_OBSTACLE_COLOR = (0, 0, 255)
 INFLATED_OBSTACLE_COLOR = (255, 0, 255)
 ROBOT_EXCLUSION_COLOR = (255, 255, 0)
@@ -399,16 +403,41 @@ class NavigatorDebug:
                     color = ENTRY_CORRIDOR_GRID_COLOR
                 else:
                     color = MINI_GRID_COLOR
-            self._draw_mini_grid_cell(canvas, cell_bounds, color)
+            self._draw_mini_grid_cell(
+                canvas, cell_bounds, color, obstacles=frame.obstacles,
+            )
 
     def _draw_mini_grid_cell(
         self,
         canvas: np.ndarray,
         cell_bounds: tuple[int, int, int, int],
         color: tuple[int, int, int] = MINI_GRID_COLOR,
+        obstacles: list[tuple[int, int, int, int]] | None = None,
     ) -> None:
         x1, y1, x2, y2 = cell_bounds
         divisions = max(1, self.mini_grid_divisions)
+
+        if obstacles:
+            margin = self.obstacle_margin_px + self.robot_margin_px
+            inflated = [
+                (ox1 - margin, oy1 - margin, ox2 + margin, oy2 + margin)
+                for ox1, oy1, ox2, oy2 in obstacles
+            ]
+            for mr in range(divisions):
+                for mc in range(divisions):
+                    mx1 = int(round(x1 + (x2 - x1) * mc / divisions))
+                    my1 = int(round(y1 + (y2 - y1) * mr / divisions))
+                    mx2 = int(round(x1 + (x2 - x1) * (mc + 1) / divisions))
+                    my2 = int(round(y1 + (y2 - y1) * (mr + 1) / divisions))
+                    if any(
+                        mx1 <= ix2 and mx2 >= ix1 and my1 <= iy2 and my2 >= iy1
+                        for ix1, iy1, ix2, iy2 in inflated
+                    ):
+                        cv2.rectangle(
+                            canvas, (mx1, my1), (mx2, my2),
+                            BLOCKED_MINI_CELL_COLOR, -1,
+                        )
+
         for i in range(1, divisions):
             x = int(round(x1 + (x2 - x1) * i / divisions))
             y = int(round(y1 + (y2 - y1) * i / divisions))
