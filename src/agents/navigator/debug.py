@@ -58,6 +58,8 @@ BLOCKED_CELL_ALPHA = 0.28
 # obstacle (i.e. mini-cells the planner cannot step on). Drawn inside cells
 # that received a mini-grid overlay so the unreachable areas are obvious.
 BLOCKED_MINI_CELL_COLOR = (40, 40, 140)
+# Lighter red for mini-cells that touch a wall side of the parent cell.
+WALL_ADJACENT_MINI_CELL_COLOR = (80, 80, 220)
 RAW_OBSTACLE_COLOR = (0, 0, 255)
 INFLATED_OBSTACLE_COLOR = (255, 0, 255)
 ROBOT_EXCLUSION_COLOR = (255, 255, 0)
@@ -386,8 +388,14 @@ class NavigatorDebug:
                     color = ENTRY_CORRIDOR_GRID_COLOR
                 else:
                     color = MINI_GRID_COLOR
+            cell_walls = None
+            rc = bounds_to_rc.get(cell_bounds)
+            if rc is not None:
+                label = chr(ord("A") + rc[0]) + str(rc[1] + 1)
+                cell_walls = frame.grid_walls.get(label) if frame.grid_walls else None
             self._draw_mini_grid_cell(
-                canvas, cell_bounds, color, obstacles=frame.obstacles,
+                canvas, cell_bounds, color,
+                obstacles=frame.obstacles, cell_walls=cell_walls,
             )
 
     def _draw_mini_grid_cell(
@@ -396,9 +404,33 @@ class NavigatorDebug:
         cell_bounds: tuple[int, int, int, int],
         color: tuple[int, int, int] = MINI_GRID_COLOR,
         obstacles: list[tuple[int, int, int, int]] | None = None,
+        cell_walls: dict | None = None,
     ) -> None:
         x1, y1, x2, y2 = cell_bounds
         divisions = max(1, self.mini_grid_divisions)
+
+        if cell_walls:
+            top = cell_walls.get("top", False)
+            bottom = cell_walls.get("bottom", False)
+            left = cell_walls.get("left", False)
+            right = cell_walls.get("right", False)
+            for mr in range(divisions):
+                for mc in range(divisions):
+                    if not (
+                        (top and mr == 0)
+                        or (bottom and mr == divisions - 1)
+                        or (left and mc == 0)
+                        or (right and mc == divisions - 1)
+                    ):
+                        continue
+                    mx1 = int(round(x1 + (x2 - x1) * mc / divisions))
+                    my1 = int(round(y1 + (y2 - y1) * mr / divisions))
+                    mx2 = int(round(x1 + (x2 - x1) * (mc + 1) / divisions))
+                    my2 = int(round(y1 + (y2 - y1) * (mr + 1) / divisions))
+                    cv2.rectangle(
+                        canvas, (mx1, my1), (mx2, my2),
+                        WALL_ADJACENT_MINI_CELL_COLOR, -1,
+                    )
 
         if obstacles:
             margin = self.obstacle_margin_px + self.robot_margin_px
