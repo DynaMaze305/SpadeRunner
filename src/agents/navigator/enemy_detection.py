@@ -1,12 +1,5 @@
 """
-Detect enemy ArUco markers in a vision frame and report their maze cells.
-
-An "enemy" is any detected marker whose ID is neither this bot's own marker
-(common.config.ARUCO_ID) nor a known non-enemy marker (the target marker(s)
-placed in the maze). Anything else is assumed to be an opponent robot.
-
-Detected enemy cells are returned to the planner so it can treat them as
-instantly blocked for path-finding (they refresh every step).
+Detect enemy ArUco markers using the camera Agent request
 """
 
 from __future__ import annotations
@@ -21,13 +14,11 @@ from common.config import ARUCO_ID
 
 logger = logging.getLogger(__name__)
 
-# Markers that are NEVER enemies. Our own marker plus the "target" / static
-# markers placed in the maze. Update if you add more reserved IDs.
+# Markers that are NEVER enemies
 NON_ENEMY_IDS: frozenset[int] = frozenset({ARUCO_ID, 1, 2})
 
 
-# One detected enemy marker. `corners` are in FULL-image pixel coords (the
-# robot debug panel is drawn on the full image, not the crop).
+# One detected enemy marker. `corners` are in FULL-image pixel coords
 @dataclass
 class EnemyMarker:
     marker_id: int
@@ -35,6 +26,7 @@ class EnemyMarker:
     corners: np.ndarray
 
 
+# returns the list of ennemies from their Arucuo
 def detect_enemies(frame, aruco_detector) -> list[EnemyMarker]:
     if frame is None or getattr(frame, "image", None) is None:
         return []
