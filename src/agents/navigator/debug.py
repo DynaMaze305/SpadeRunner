@@ -53,6 +53,10 @@ ARROW_LENGTH = 35
 ARROW_THICK = 2
 BLOCKED_CELL_COLOR = (80, 80, 255)
 TRAVERSED_BLOCKED_CELL_COLOR = (0, 165, 255)
+# Mini-grid colour for blocked cells that are NOT traversed by the current
+# path - drawn so the user can see every blocked cell's reachable mini-cells
+# regardless of whether the planner routed through it.
+UNTRAVERSED_BLOCKED_GRID_COLOR = (0, 255, 255)
 BLOCKED_CELL_ALPHA = 0.28
 # Dark red fill for individual mini-cells whose bounds intersect any inflated
 # obstacle (i.e. mini-cells the planner cannot step on). Drawn inside cells
@@ -425,6 +429,20 @@ class NavigatorDebug:
             )
             self._draw_mini_grid_cell(
                 canvas, cell_bounds, color,
+                obstacles=frame.obstacles,
+                frame=frame, cell_label=cell_label,
+            )
+
+        # Always draw the mini-grid lattice on every blocked cell that the path
+        # didn't traverse, so the user can see each cell's reachable mini-cells
+        # (yellow border, dark-red obstacle-blocked mini-cells, light-red wall-
+        # adjacent ones). Traversed-blocked cells are already covered above.
+        for bounds, rc in blocked_bounds.items():
+            if bounds in counts and counts[bounds] >= 2:
+                continue
+            cell_label = chr(ord("A") + rc[0]) + str(rc[1] + 1)
+            self._draw_mini_grid_cell(
+                canvas, bounds, UNTRAVERSED_BLOCKED_GRID_COLOR,
                 obstacles=frame.obstacles,
                 frame=frame, cell_label=cell_label,
             )
