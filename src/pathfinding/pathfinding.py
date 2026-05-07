@@ -5,6 +5,19 @@ import string
 from vision.maze_solver import MazeSolver
 
 
+# Cells the planner must never route through and the renderer paints over in a
+# dark fill. Treated as "outside the playable area" - not displayed as blocked,
+# not used for obstacle accounting, just unreachable.
+OUT_OF_GAME_CELLS: frozenset[str] = frozenset({"A5", "A6", "A7"})
+
+
+def _baseline_blocked(start_cell: str, end_cell: str) -> set[str]:
+    blocked = set(OUT_OF_GAME_CELLS)
+    blocked.discard(start_cell)
+    blocked.discard(end_cell)
+    return blocked
+
+
 def solve_from_frame(
     frame,
     start_cell: str,
@@ -17,26 +30,25 @@ def solve_from_frame(
         return None
 
     solver = MazeSolver()
-    blocked_cells = (
-        obstacle_cells_from_frame(
+    baseline = _baseline_blocked(start_cell, end_cell)
+
+    if avoid_obstacles:
+        obstacle_blocked = obstacle_cells_from_frame(
             frame,
             ignored_cells={start_cell, end_cell},
         )
-        if avoid_obstacles
-        else set()
-    )
-
-    if avoid_obstacles and blocked_cells:
-        obstacle_aware_path = solver.shortest_path(
-            grid_walls=frame.grid_walls,
-            start_cell=start_cell,
-            end_cell=end_cell,
-            n_rows=frame.n_rows,
-            n_cols=frame.n_cols,
-            blocked_cells=blocked_cells,
-        )
-        if obstacle_aware_path is not None:
-            return obstacle_aware_path
+        full_blocked = baseline | obstacle_blocked
+        if full_blocked:
+            obstacle_aware_path = solver.shortest_path(
+                grid_walls=frame.grid_walls,
+                start_cell=start_cell,
+                end_cell=end_cell,
+                n_rows=frame.n_rows,
+                n_cols=frame.n_cols,
+                blocked_cells=full_blocked,
+            )
+            if obstacle_aware_path is not None:
+                return obstacle_aware_path
 
     return solver.shortest_path(
         grid_walls=frame.grid_walls,
@@ -44,6 +56,7 @@ def solve_from_frame(
         end_cell=end_cell,
         n_rows=frame.n_rows,
         n_cols=frame.n_cols,
+        blocked_cells=baseline,
     )
 
 
