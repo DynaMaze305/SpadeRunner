@@ -39,7 +39,12 @@ PATH_LINE_COLOR = (0, 165, 255)
 PLANNED_PATH_FAINT_COLOR = (180, 210, 255)
 BYPASS_PATH_COLOR = (255, 128, 0)
 BYPASS_POINT_RADIUS = 4
+# Mini-grid line colour used for cells that are discretised but neither
+# blocked nor adjacent to any traversed blocked cell. Purple = anomaly.
 MINI_GRID_COLOR = (200, 0, 200)
+# Pink — cell is a corridor entry/exit (free, but grid-adjacent to a
+# traversed blocked cell so the planner pulled it into the mini-grid corridor).
+ENTRY_CORRIDOR_GRID_COLOR = (180, 105, 255)
 PATH_LINE_THICK = 4
 POSITION_DOT_COLOR = (0, 0, 255)
 POSITION_DOT_RADIUS = 8
@@ -339,31 +344,75 @@ class NavigatorDebug:
         point_path: list[tuple[int, int]],
     ) -> None:
         counts: dict[tuple[int, int, int, int], int] = {}
+        bounds_to_rc: dict[tuple[int, int, int, int], tuple[int, int]] = {}
         for point in point_path:
             cell_bounds = self._cell_bounds_for_point(point, frame.x_lines, frame.y_lines)
             if cell_bounds is None:
                 continue
             counts[cell_bounds] = counts.get(cell_bounds, 0) + 1
+            if cell_bounds not in bounds_to_rc:
+                rc = self._bounds_to_rc(cell_bounds, frame.x_lines, frame.y_lines)
+                if rc is not None:
+                    bounds_to_rc[cell_bounds] = rc
+
+        blocked_bounds: dict[tuple[int, int, int, int], tuple[int, int]] = {}
+        for cell in obstacle_cells_from_frame(frame):
+            bounds = self._cell_bounds(cell, frame.x_lines, frame.y_lines)
+            if bounds is None:
+                continue
+            rc = self._bounds_to_rc(bounds, frame.x_lines, frame.y_lines)
+            if rc is not None:
+                blocked_bounds[bounds] = rc
+
+        traversed_blocked_rcs = {
+            rc for bounds, rc in blocked_bounds.items() if bounds in counts
+        }
 
         for cell_bounds, count in counts.items():
             if count < 2:
                 continue
-            self._draw_mini_grid_cell(canvas, cell_bounds)
+            if cell_bounds in blocked_bounds:
+                color = TRAVERSED_BLOCKED_CELL_COLOR
+            else:
+                rc = bounds_to_rc.get(cell_bounds)
+                if rc is not None and any(
+                    abs(rc[0] - br) + abs(rc[1] - bc) == 1
+                    for br, bc in traversed_blocked_rcs
+                ):
+                    color = ENTRY_CORRIDOR_GRID_COLOR
+                else:
+                    color = MINI_GRID_COLOR
+            self._draw_mini_grid_cell(canvas, cell_bounds, color)
 
     def _draw_mini_grid_cell(
         self,
         canvas: np.ndarray,
         cell_bounds: tuple[int, int, int, int],
+        color: tuple[int, int, int] = MINI_GRID_COLOR,
     ) -> None:
         x1, y1, x2, y2 = cell_bounds
         divisions = max(1, self.mini_grid_divisions)
         for i in range(1, divisions):
             x = int(round(x1 + (x2 - x1) * i / divisions))
             y = int(round(y1 + (y2 - y1) * i / divisions))
-            cv2.line(canvas, (x, y1), (x, y2), MINI_GRID_COLOR, 1)
-            cv2.line(canvas, (x1, y), (x2, y), MINI_GRID_COLOR, 1)
+            cv2.line(canvas, (x, y1), (x, y2), color, 1)
+            cv2.line(canvas, (x1, y), (x2, y), color, 1)
 
-        cv2.rectangle(canvas, (x1, y1), (x2, y2), MINI_GRID_COLOR, 2)
+        cv2.rectangle(canvas, (x1, y1), (x2, y2), color, 2)
+
+    @staticmethod
+    def _bounds_to_rc(
+        bounds: tuple[int, int, int, int],
+        x_lines: list[int],
+        y_lines: list[int],
+    ) -> tuple[int, int] | None:
+        x1, y1, _, _ = bounds
+        try:
+            col = x_lines.index(x1)
+            row = y_lines.index(y1)
+        except ValueError:
+            return None
+        return (row, col)
 
     @staticmethod
     def _cell_bounds_for_point(
