@@ -111,16 +111,22 @@ class PathPlanner:
 
             if cell in blocked_cells:
                 new_path.extend(run)
-            elif is_pink(cell):
-                if center not in run:
-                    run.append(center)
-                new_path.extend(run)
-                logger.info(f"[PLAN-DEBUG] post-process: pink {cell} centre={center}")
+            # TEMP TEST: free corridor entry/exit (pink) cells too -- collapse
+            # them to a single centre exactly like any other free cell. The
+            # original "keep mini-grid + force centre" logic is preserved
+            # below for easy re-enable; remove the comments to bring it back.
+            #
+            # elif is_pink(cell):
+            #     if center not in run:
+            #         run.append(center)
+            #     new_path.extend(run)
+            #     logger.info(f"[PLAN-DEBUG] post-process: pink {cell} centre={center}")
             else:
                 new_path.append(center)
                 if len(run) > 1:
+                    kind = "pink" if is_pink(cell) else "free"
                     logger.info(
-                        f"[PLAN-DEBUG] post-process: collapsed {cell} "
+                        f"[PLAN-DEBUG] post-process: collapsed {kind} {cell} "
                         f"({len(run)} pts -> 1 centre={center})"
                     )
 
