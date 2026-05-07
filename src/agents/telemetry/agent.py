@@ -140,10 +140,10 @@ class TelemetryAgent(agent.Agent):
                 race_time = payload["data"]["race_time"]
 
                 # Store last race time for this bot
-                self.last_race_time[bot] = race_time
+                self.agent.last_race_time[bot] = race_time
 
                 # Broadcast to dashboard
-                await self.ws_broadcast({
+                await self.agent.dashboard.broadcast({
                     "type": "race_time",
                     "bot": bot,
                     "data": race_time
@@ -155,10 +155,10 @@ class TelemetryAgent(agent.Agent):
                 race_time = payload["data"]["total_time"]
 
                 # Store last race time for this bot
-                self.last_total_time_time[bot] = race_time
+                self.agent.last_total_time[bot] = race_time
 
                 # Broadcast to dashboard
-                await self.ws_broadcast({
+                await self.agent.dashboard.broadcast({
                     "type": "total_time",
                     "bot": bot,
                     "data": race_time
