@@ -388,14 +388,14 @@ class NavigatorDebug:
                     color = ENTRY_CORRIDOR_GRID_COLOR
                 else:
                     color = MINI_GRID_COLOR
-            cell_walls = None
             rc = bounds_to_rc.get(cell_bounds)
-            if rc is not None:
-                label = chr(ord("A") + rc[0]) + str(rc[1] + 1)
-                cell_walls = frame.grid_walls.get(label) if frame.grid_walls else None
+            cell_label = (
+                chr(ord("A") + rc[0]) + str(rc[1] + 1) if rc is not None else None
+            )
             self._draw_mini_grid_cell(
                 canvas, cell_bounds, color,
-                obstacles=frame.obstacles, cell_walls=cell_walls,
+                obstacles=frame.obstacles,
+                frame=frame, cell_label=cell_label,
             )
 
     def _draw_mini_grid_cell(
@@ -404,33 +404,23 @@ class NavigatorDebug:
         cell_bounds: tuple[int, int, int, int],
         color: tuple[int, int, int] = MINI_GRID_COLOR,
         obstacles: list[tuple[int, int, int, int]] | None = None,
-        cell_walls: dict | None = None,
+        frame=None,
+        cell_label: str | None = None,
     ) -> None:
         x1, y1, x2, y2 = cell_bounds
         divisions = max(1, self.mini_grid_divisions)
 
-        if cell_walls:
-            top = cell_walls.get("top", False)
-            bottom = cell_walls.get("bottom", False)
-            left = cell_walls.get("left", False)
-            right = cell_walls.get("right", False)
-            for mr in range(divisions):
-                for mc in range(divisions):
-                    if not (
-                        (top and mr == 0)
-                        or (bottom and mr == divisions - 1)
-                        or (left and mc == 0)
-                        or (right and mc == divisions - 1)
-                    ):
-                        continue
-                    mx1 = int(round(x1 + (x2 - x1) * mc / divisions))
-                    my1 = int(round(y1 + (y2 - y1) * mr / divisions))
-                    mx2 = int(round(x1 + (x2 - x1) * (mc + 1) / divisions))
-                    my2 = int(round(y1 + (y2 - y1) * (mr + 1) / divisions))
-                    cv2.rectangle(
-                        canvas, (mx1, my1), (mx2, my2),
-                        WALL_ADJACENT_MINI_CELL_COLOR, -1,
-                    )
+        if frame is not None and cell_label and getattr(frame, "grid_walls", None):
+            wall_minis = self._wall_adjacent_minis(frame, cell_label, divisions)
+            for mr, mc in wall_minis:
+                mx1 = int(round(x1 + (x2 - x1) * mc / divisions))
+                my1 = int(round(y1 + (y2 - y1) * mr / divisions))
+                mx2 = int(round(x1 + (x2 - x1) * (mc + 1) / divisions))
+                my2 = int(round(y1 + (y2 - y1) * (mr + 1) / divisions))
+                cv2.rectangle(
+                    canvas, (mx1, my1), (mx2, my2),
+                    WALL_ADJACENT_MINI_CELL_COLOR, -1,
+                )
 
         if obstacles:
             margin = self.obstacle_margin_px + self.robot_margin_px
@@ -474,6 +464,62 @@ class NavigatorDebug:
         except ValueError:
             return None
         return (row, col)
+
+    # Returns the set of (mini_row, mini_col) positions that should be marked
+    # as wall-adjacent for the parent cell `label`. Includes:
+    #  - the row/column along any side of the parent that has a wall, AND
+    #  - corner mini-cells when a wall of a neighbouring cell ends at that
+    #    corner (e.g. the wall between B5 and B6 makes C5's top-right
+    #    mini-cell wall-adjacent even though no side of C5 itself has a wall).
+    @staticmethod
+    def _wall_adjacent_minis(
+        frame, label: str, divisions: int,
+    ) -> set[tuple[int, int]]:
+        walls = frame.grid_walls.get(label, {}) or {}
+        result: set[tuple[int, int]] = set()
+
+        if walls.get("top", False):
+            for mc in range(divisions):
+                result.add((0, mc))
+        if walls.get("bottom", False):
+            for mc in range(divisions):
+                result.add((divisions - 1, mc))
+        if walls.get("left", False):
+            for mr in range(divisions):
+                result.add((mr, 0))
+        if walls.get("right", False):
+            for mr in range(divisions):
+                result.add((mr, divisions - 1))
+
+        try:
+            row = ord(label[0].upper()) - ord("A")
+            col = int(label[1:]) - 1
+        except (ValueError, IndexError):
+            return result
+
+        n_rows = frame.n_rows
+        n_cols = frame.n_cols
+
+        def wall_present(r: int, c: int, side: str) -> bool:
+            if not (0 <= r < n_rows and 0 <= c < n_cols):
+                return False
+            neighbour_label = chr(ord("A") + r) + str(c + 1)
+            return frame.grid_walls.get(neighbour_label, {}).get(side, False)
+
+        # top-left corner: above's left wall, or left's top wall
+        if wall_present(row - 1, col, "left") or wall_present(row, col - 1, "top"):
+            result.add((0, 0))
+        # top-right corner: above's right wall, or right's top wall
+        if wall_present(row - 1, col, "right") or wall_present(row, col + 1, "top"):
+            result.add((0, divisions - 1))
+        # bottom-left corner: below's left wall, or left's bottom wall
+        if wall_present(row + 1, col, "left") or wall_present(row, col - 1, "bottom"):
+            result.add((divisions - 1, 0))
+        # bottom-right corner: below's right wall, or right's bottom wall
+        if wall_present(row + 1, col, "right") or wall_present(row, col + 1, "bottom"):
+            result.add((divisions - 1, divisions - 1))
+
+        return result
 
     @staticmethod
     def _cell_bounds_for_point(
