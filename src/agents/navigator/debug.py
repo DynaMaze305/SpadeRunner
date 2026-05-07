@@ -80,6 +80,19 @@ ENEMY_CELL_ALPHA = 0.40
 # stopped because no valid path was found this step.
 STOPPED_CELL_COLOR = (0, 220, 0)
 STOPPED_CELL_ALPHA = 0.45
+# Burnt-orange polyline drawn over the opponent's predicted A* route on
+# the path panel. Distinct from our own path orange so the two are
+# visually separable at a glance.
+OPPONENT_PATH_COLOR = (40, 120, 230)
+OPPONENT_PATH_THICK = 3
+# Purple dot drawn at the opponent's exact pixel location inside its EN cell.
+OPPONENT_DOT_COLOR = (200, 0, 200)
+OPPONENT_DOT_RADIUS = 7
+# Pink polyline drawn when the opponent is blocking us and we re-route
+# toward a safe bypass cell. Same convention as our path: cell-centre to
+# cell-centre.
+AVOIDANCE_PATH_COLOR = (203, 192, 255)
+AVOIDANCE_PATH_THICK = 3
 
 # Target-direction arrow + path info text overlay (BGR).
 TARGET_ARROW_COLOR = (0, 180, 0)
@@ -126,6 +139,9 @@ class NavigatorDebug:
         next_waypoint: tuple[int, int] | None = None,
         enemies: list | None = None,
         stopped_cell: str | None = None,
+        opponent=None,
+        opponent_path: list[str] | None = None,
+        avoidance_path: list[str] | None = None,
     ) -> None:
         image_with_axes = self.camera.draw_axes(image) if image is not None else None
 
@@ -167,7 +183,7 @@ class NavigatorDebug:
 
         path_img = self._build_path_panel(
             frame, robot_pose, path, point_path, next_waypoint,
-            enemies, stopped_cell,
+            enemies, stopped_cell, opponent, opponent_path, avoidance_path,
         )
         obstacles_img = self._build_obstacles_panel(frame)
 
@@ -249,6 +265,9 @@ class NavigatorDebug:
         next_waypoint: tuple[int, int] | None = None,
         enemies: list | None = None,
         stopped_cell: str | None = None,
+        opponent=None,
+        opponent_path: list[str] | None = None,
+        avoidance_path: list[str] | None = None,
     ) -> np.ndarray | None:
         if frame is None:
             return None
@@ -385,11 +404,67 @@ class NavigatorDebug:
 
         if enemies:
             self._draw_enemy_cells(canvas, frame, enemies)
+        if opponent_path:
+            self._draw_opponent_path(canvas, frame, opponent_path)
+        if avoidance_path:
+            self._draw_avoidance_path(canvas, frame, avoidance_path)
+        if opponent is not None:
+            self._draw_opponent_dot(canvas, frame, opponent)
         if stopped_cell:
             self._draw_stopped_cell(canvas, frame, stopped_cell)
         self._draw_out_of_game_cells(canvas, frame)
 
         return canvas
+
+    # Draws the opponent's predicted A* route as a burnt-orange polyline,
+    # cell-centre to cell-centre, with small filled circles at each cell.
+    def _draw_opponent_path(
+        self, canvas: np.ndarray, frame, opponent_path: list[str],
+    ) -> None:
+        centres = [
+            self._cell_center(cell, frame)
+            for cell in opponent_path
+        ]
+        centres = [c for c in centres if c is not None]
+        if len(centres) < 2:
+            for c in centres:
+                cv2.circle(canvas, c, 5, OPPONENT_PATH_COLOR, -1)
+            return
+        for a, b in zip(centres[:-1], centres[1:]):
+            cv2.line(canvas, a, b, OPPONENT_PATH_COLOR, OPPONENT_PATH_THICK)
+        for c in centres:
+            cv2.circle(canvas, c, 5, OPPONENT_PATH_COLOR, -1)
+
+    # Draws our pink fallback route to the closest cell off the opponent's path.
+    def _draw_avoidance_path(
+        self, canvas: np.ndarray, frame, avoidance_path: list[str],
+    ) -> None:
+        centres = [
+            self._cell_center(cell, frame)
+            for cell in avoidance_path
+        ]
+        centres = [c for c in centres if c is not None]
+        if len(centres) < 2:
+            for c in centres:
+                cv2.circle(canvas, c, 6, AVOIDANCE_PATH_COLOR, -1)
+            return
+        for a, b in zip(centres[:-1], centres[1:]):
+            cv2.line(canvas, a, b, AVOIDANCE_PATH_COLOR, AVOIDANCE_PATH_THICK)
+        for c in centres:
+            cv2.circle(canvas, c, 6, AVOIDANCE_PATH_COLOR, -1)
+
+    # Purple dot at the opponent's exact pixel position inside its EN cell.
+    # `opponent` is an EnemyMarker (corners are FULL-image coords; we shift
+    # to crop coords using the maze crop_bbox).
+    def _draw_opponent_dot(self, canvas: np.ndarray, frame, opponent) -> None:
+        corners = getattr(opponent, "corners", None)
+        if corners is None or corners.size == 0:
+            return
+        bx1, by1, _, _ = frame.maze["crop_bbox"]
+        cx = int(corners[:, 0].mean() - bx1)
+        cy = int(corners[:, 1].mean() - by1)
+        cv2.circle(canvas, (cx, cy), OPPONENT_DOT_RADIUS, OPPONENT_DOT_COLOR, -1)
+        cv2.circle(canvas, (cx, cy), OPPONENT_DOT_RADIUS + 1, (0, 0, 0), 1)
 
     def _draw_stopped_cell(self, canvas: np.ndarray, frame, cell: str) -> None:
         bounds = self._cell_bounds(cell, frame.x_lines, frame.y_lines)
