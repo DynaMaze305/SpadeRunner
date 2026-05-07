@@ -59,3 +59,4 @@ received_photos/*
 calibration_photos/*
 navigation_photos/*
 *.dbmazes/
+telemetry.db
