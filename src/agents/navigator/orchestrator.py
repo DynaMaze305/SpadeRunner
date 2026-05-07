@@ -105,6 +105,7 @@ class NavigationOrchestrator:
                     )
                     if preflight_positions_m:
                         await self.boulder_picker(preflight_positions_m[0])
+                        await asyncio.sleep(20)  
                         boulder_pick_requested = True
                         logger.info(
                             f"[BOULDERS] pick requested before obstacles/motion: "
