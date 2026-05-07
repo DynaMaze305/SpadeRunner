@@ -31,19 +31,27 @@ def solve_from_frame(
         return None
 
     solver = MazeSolver()
-    baseline = _baseline_blocked(start_cell, end_cell)
+
+    # Hard-blocked: cells the solver MUST treat like walls regardless of the
+    # avoid_obstacles flag. OUT_OF_GAME baseline plus per-step extras
+    # supplied by the caller (e.g. detected enemy robots). Even the fallback
+    # orthogonal-tolerant solve refuses to step on these.
+    hard_blocked = _baseline_blocked(start_cell, end_cell)
+    if extra_blocked_cells:
+        hard_blocked = hard_blocked | (
+            set(extra_blocked_cells) - {start_cell, end_cell}
+        )
+
+    # Soft-blocked: real obstacles. Avoided when avoid_obstacles=True, but
+    # the fallback path is allowed to pass through them orthogonally if no
+    # obstacle-free route exists. Diagonal corner-cuts always reject them.
     obstacle_blocked = obstacle_cells_from_frame(
         frame,
         ignored_cells={start_cell, end_cell},
     )
-    # Dynamic per-step extras (e.g. enemy-robot cells). Keep start/end out so
-    # the solver doesn't refuse to even start when an enemy sits on us.
-    if extra_blocked_cells:
-        extras = set(extra_blocked_cells) - {start_cell, end_cell}
-        obstacle_blocked = obstacle_blocked | extras
 
     if avoid_obstacles:
-        full_blocked = baseline | obstacle_blocked
+        full_blocked = hard_blocked | obstacle_blocked
         if full_blocked:
             obstacle_aware_path = solver.shortest_path(
                 grid_walls=frame.grid_walls,
@@ -56,20 +64,19 @@ def solve_from_frame(
             if obstacle_aware_path is not None:
                 return obstacle_aware_path
 
-    # Fallback: orthogonal A* tolerates obstacle cells (so the planner can
-    # still find SOMETHING when there's no obstacle-free route), but the
-    # diagonal corner-cutting check still rejects any step where one of the
-    # 4 cells around the diagonal is a real obstacle. This prevents the
-    # diagonal-clip-through-blocked-cell behaviour observed e.g. in
-    # navigation_159/step_17.
+    # Fallback: orthogonal A* tolerates SOFT-blocked cells (so the planner
+    # can still find SOMETHING when there's no obstacle-free route), but
+    # hard-blocked cells (OUT_OF_GAME, enemies) stay treated as walls.
+    # The diagonal corner-cut check still rejects any step where any of the
+    # 4 cells touches a soft-blocked obstacle.
     return solver.shortest_path(
         grid_walls=frame.grid_walls,
         start_cell=start_cell,
         end_cell=end_cell,
         n_rows=frame.n_rows,
         n_cols=frame.n_cols,
-        blocked_cells=baseline,
-        diagonal_block_cells=baseline | obstacle_blocked,
+        blocked_cells=hard_blocked,
+        diagonal_block_cells=hard_blocked | obstacle_blocked,
     )
 
 

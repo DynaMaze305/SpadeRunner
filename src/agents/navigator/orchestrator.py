@@ -14,7 +14,7 @@ from common.config import TARGET_ARUCO_ID
 
 from agents.navigator.config import NavigatorConfig
 from agents.navigator.debug import NavigatorDebug
-from agents.navigator.enemy_detection import detect_enemy_cells
+from agents.navigator.enemy_detection import detect_enemies
 from agents.navigator.localization import RobotLocalizationStep
 from agents.navigator.planner import PathPlanner
 from agents.navigator.result import NavigationOutcome, NavigationResult
@@ -306,7 +306,8 @@ class NavigationOrchestrator:
             # Detect enemy markers and lock their cells before planning. This
             # is recomputed every step so an enemy moving in/out of the maze
             # is reflected immediately.
-            enemy_cells = detect_enemy_cells(frame, self.vision.aruco)
+            enemies = detect_enemies(frame, self.vision.aruco)
+            enemy_cells = {e.cell for e in enemies}
             if enemy_cells:
                 logger.info(f"[ENEMY] locked cells this step: {sorted(enemy_cells)}")
 
@@ -319,16 +320,24 @@ class NavigationOrchestrator:
                 extra_blocked_cells=enemy_cells,
             )
             if point_path is None or len(point_path) < 1:
-                logger.error("[ERROR] No valid mini-grid path")
-                self._save_debug(step, image=frame.image, frame=frame, robot_pose=robot, path=None)
-                return NavigationResult(
-                    NavigationOutcome.FAILED_NO_PATH,
-                    last_cell=current_cell,
-                    steps_taken=step,
-                    message="no valid mini-grid path",
-                    boulder_coordinates=latest_boulder_coordinates,
-                    boulder_positions_m=latest_boulder_positions_m,
+                wait_s = cfg.path_blocked_wait_s
+                logger.error(
+                    "[NO PATH FOUND] PATH BLOCKED -- "
+                    f"ROBOT STOPPED IN CELL {current_cell} -- "
+                    f"WAITING {wait_s:.1f}s BEFORE RETRYING"
                 )
+                self._save_debug(
+                    step,
+                    image=frame.image,
+                    frame=frame,
+                    robot_pose=robot,
+                    path=None,
+                    enemies=enemies,
+                    stopped_cell=current_cell,
+                )
+                if wait_s > 0:
+                    await asyncio.sleep(wait_s)
+                continue
 
             waypoint_info = self._next_point_waypoint(
                 robot_local_pos,
@@ -383,6 +392,7 @@ class NavigationOrchestrator:
                 path=None,
                 point_path=point_path,
                 next_waypoint=waypoint,
+                enemies=enemies,
             )
 
             # Push the just-saved per-step path image to the logger.
@@ -455,24 +465,15 @@ class NavigationOrchestrator:
                 ok = await self.executor.execute_command(command)
                 if not ok:
                     return False
-                await self._post_motion_settle(label="move")
+                # Settle now lives inside MotionClient so it applies to the
+                # calibrator's direct motion calls too. No orchestrator-level
+                # sleep needed.
 
             else:
                 logger.warning(f"Unknown motion command: {command}")
                 return False
 
         return True
-
-    # Holds the navigator idle for cfg.post_motion_settle_s after every
-    # successful motion ack so the chassis has time to physically stop /
-    # the next photo isn't taken mid-motion. Set the env var
-    # NAVIGATOR_POST_MOTION_SETTLE_S=0 to disable entirely.
-    async def _post_motion_settle(self, label: str) -> None:
-        delay = self.config.post_motion_settle_s
-        if delay <= 0:
-            return
-        logger.info(f"[NAV] settle {delay:.2f}s after {label}")
-        await asyncio.sleep(delay)
 
     async def _rotate_with_correction(
         self,
@@ -489,7 +490,8 @@ class NavigationOrchestrator:
             ok = await self.executor.rotate(delta)
             if not ok:
                 return False
-            await self._post_motion_settle(label=f"rotate-{attempt}")
+            # Settle is handled inside MotionClient.command_rotation so the
+            # calibrator's direct rotations get the same pause for free.
 
             # Last allowed attempt -> commit, no point re-measuring.
             if attempt + 1 >= cfg.max_rotation_attempts:
@@ -661,6 +663,8 @@ class NavigationOrchestrator:
         path,
         point_path=None,
         next_waypoint=None,
+        enemies=None,
+        stopped_cell=None,
     ) -> None:
         if self.debug is None:
             return
@@ -671,5 +675,7 @@ class NavigationOrchestrator:
             robot_pose=robot_pose,
             path=path,
             point_path=point_path,
+            enemies=enemies,
             next_waypoint=next_waypoint,
+            stopped_cell=stopped_cell,
         )
