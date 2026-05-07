@@ -32,16 +32,20 @@ class PathPlanner:
         end_cell: str,
         start_point: tuple[int, int],
         goal_point: tuple[int, int],
+        extra_blocked_cells: set[str] | None = None,
     ) -> list[tuple[int, int]] | None:
         if self.mini_grid_planner is None:
             return None
 
-        for coarse_path in self._candidate_coarse_paths(frame, start_cell, end_cell):
+        for coarse_path in self._candidate_coarse_paths(
+            frame, start_cell, end_cell, extra_blocked_cells,
+        ):
             point_path = self._points_from_coarse_path(
                 frame=frame,
                 coarse_path=coarse_path,
                 start_point=start_point,
                 goal_point=goal_point,
+                extra_blocked_cells=extra_blocked_cells,
             )
             if point_path is not None:
                 return self._post_process_point_path(point_path, frame)
@@ -240,6 +244,7 @@ class PathPlanner:
         frame,
         start_cell: str,
         end_cell: str,
+        extra_blocked_cells: set[str] | None = None,
     ) -> list[list[str]]:
         paths: list[list[str]] = []
         for avoid_obstacles in (False, True):
@@ -248,6 +253,7 @@ class PathPlanner:
                 start_cell,
                 end_cell,
                 avoid_obstacles=avoid_obstacles,
+                extra_blocked_cells=extra_blocked_cells,
             )
             if path is not None and path not in paths:
                 paths.append(path)
@@ -259,8 +265,11 @@ class PathPlanner:
         coarse_path: list[str],
         start_point: tuple[int, int],
         goal_point: tuple[int, int],
+        extra_blocked_cells: set[str] | None = None,
     ) -> list[tuple[int, int]] | None:
         blocked_cells = obstacle_cells_from_frame(frame)
+        if extra_blocked_cells:
+            blocked_cells = blocked_cells | set(extra_blocked_cells)
         points: list[tuple[int, int]] = []
         protected_points: set[tuple[int, int]] = set()
         index = 0

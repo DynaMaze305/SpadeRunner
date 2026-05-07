@@ -23,6 +23,7 @@ def solve_from_frame(
     start_cell: str,
     end_cell: str,
     avoid_obstacles: bool = True,
+    extra_blocked_cells: set[str] | None = None,
 ) -> list[str] | None:
     if frame.n_rows <= 0 or frame.n_cols <= 0:
         return None
@@ -35,6 +36,11 @@ def solve_from_frame(
         frame,
         ignored_cells={start_cell, end_cell},
     )
+    # Dynamic per-step extras (e.g. enemy-robot cells). Keep start/end out so
+    # the solver doesn't refuse to even start when an enemy sits on us.
+    if extra_blocked_cells:
+        extras = set(extra_blocked_cells) - {start_cell, end_cell}
+        obstacle_blocked = obstacle_blocked | extras
 
     if avoid_obstacles:
         full_blocked = baseline | obstacle_blocked

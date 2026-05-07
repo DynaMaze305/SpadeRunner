@@ -14,6 +14,7 @@ from common.config import TARGET_ARUCO_ID
 
 from agents.navigator.config import NavigatorConfig
 from agents.navigator.debug import NavigatorDebug
+from agents.navigator.enemy_detection import detect_enemy_cells
 from agents.navigator.localization import RobotLocalizationStep
 from agents.navigator.planner import PathPlanner
 from agents.navigator.result import NavigationOutcome, NavigationResult
@@ -301,12 +302,21 @@ class NavigationOrchestrator:
                 )
 
             robot_local_pos = self._robot_local_position(frame, robot)
+
+            # Detect enemy markers and lock their cells before planning. This
+            # is recomputed every step so an enemy moving in/out of the maze
+            # is reflected immediately.
+            enemy_cells = detect_enemy_cells(frame, self.vision.aruco)
+            if enemy_cells:
+                logger.info(f"[ENEMY] locked cells this step: {sorted(enemy_cells)}")
+
             point_path = self.planner.plan_points(
                 frame=frame,
                 start_cell=current_cell,
                 end_cell=self.target_cell,
                 start_point=robot_local_pos,
                 goal_point=target_center,
+                extra_blocked_cells=enemy_cells,
             )
             if point_path is None or len(point_path) < 1:
                 logger.error("[ERROR] No valid mini-grid path")
