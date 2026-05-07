@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import logging
 import math
+import random
 from typing import Awaitable, Callable, Optional
 
 import cv2
@@ -196,8 +198,17 @@ class FakeLocalizer:
 
 
 class FakeExecutor:
+    # Sleeps for a randomised duration on every motion command so the loop
+    # spaces out roughly like a real bot decelerating, settling, and acking.
+    MOVE_DELAY_RANGE_S = (1.0, 2.0)
+
     def __init__(self, sim: SimulationState) -> None:
         self.sim = sim
+
+    async def _fake_motion_delay(self) -> None:
+        delay = random.uniform(*self.MOVE_DELAY_RANGE_S)
+        logger.info(f"[EMU] simulating motion for {delay:.2f}s")
+        await asyncio.sleep(delay)
 
     async def execute_command(self, command: dict) -> bool:
         action = command.get("action")
@@ -208,6 +219,7 @@ class FakeExecutor:
                 return False
             self.sim.apply_move(float(distance_mm))
             logger.info(f"[EMU] move applied {float(distance_mm):.0f} mm")
+            await self._fake_motion_delay()
             return True
         if action == "rotate":
             delta = command.get("angle_deg")
@@ -216,6 +228,7 @@ class FakeExecutor:
                 return False
             self.sim.apply_rotate(float(delta))
             logger.info(f"[EMU] rotate applied {float(delta):+.1f} deg")
+            await self._fake_motion_delay()
             return True
         logger.warning(f"[EMU] unknown action: {action}")
         return False
@@ -223,4 +236,5 @@ class FakeExecutor:
     async def rotate(self, angle_deg: float) -> bool:
         self.sim.apply_rotate(float(angle_deg))
         logger.info(f"[EMU] rotate applied {float(angle_deg):+.1f} deg")
+        await self._fake_motion_delay()
         return True
