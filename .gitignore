@@ -58,4 +58,4 @@ prosody/prosody-data/*
 received_photos/*
 calibration_photos/*
 navigation_photos/*
-*.db
+*.dbmazes/
