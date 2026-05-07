@@ -7,6 +7,10 @@ from dataclasses import dataclass
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO_ROOT, "src"))
 
+# common.config requires XMPP_DOMAIN at import time; tests don't talk to a
+# real XMPP server, so any non-empty value works.
+os.environ.setdefault("XMPP_DOMAIN", "test.local")
+
 from agents.navigator.emulation import SimulationState  # noqa: E402
 from agents.navigator.localization import RobotPose  # noqa: E402
 
