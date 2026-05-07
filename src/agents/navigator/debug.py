@@ -343,17 +343,34 @@ class NavigatorDebug:
         frame,
         point_path: list[tuple[int, int]],
     ) -> None:
-        counts: dict[tuple[int, int, int, int], int] = {}
+        points_by_bounds: dict[tuple[int, int, int, int], list[tuple[int, int]]] = {}
         bounds_to_rc: dict[tuple[int, int, int, int], tuple[int, int]] = {}
         for point in point_path:
             cell_bounds = self._cell_bounds_for_point(point, frame.x_lines, frame.y_lines)
             if cell_bounds is None:
                 continue
-            counts[cell_bounds] = counts.get(cell_bounds, 0) + 1
+            points_by_bounds.setdefault(cell_bounds, []).append(point)
             if cell_bounds not in bounds_to_rc:
                 rc = self._bounds_to_rc(cell_bounds, frame.x_lines, frame.y_lines)
                 if rc is not None:
                     bounds_to_rc[cell_bounds] = rc
+
+        # Diagnostic: log every cell that ended up with >=2 waypoints, with
+        # the exact waypoint coordinates that landed there. Lets us see
+        # whether the planner emitted the points to the right cell.
+        for bounds, pts in sorted(
+            points_by_bounds.items(),
+            key=lambda kv: bounds_to_rc.get(kv[0], (-1, -1)),
+        ):
+            if len(pts) < 2:
+                continue
+            rc = bounds_to_rc.get(bounds)
+            label = (
+                chr(ord("A") + rc[0]) + str(rc[1] + 1) if rc is not None else "?"
+            )
+            logger.info(f"[MINI-DEBUG] cell {label} bounds={bounds} pts={pts}")
+
+        counts = {b: len(p) for b, p in points_by_bounds.items()}
 
         blocked_bounds: dict[tuple[int, int, int, int], tuple[int, int]] = {}
         for cell in obstacle_cells_from_frame(frame):
