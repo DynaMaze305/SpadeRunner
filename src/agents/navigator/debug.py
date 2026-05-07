@@ -39,7 +39,7 @@ PATH_LINE_COLOR = (0, 165, 255)
 PLANNED_PATH_FAINT_COLOR = (180, 210, 255)
 BYPASS_PATH_COLOR = (255, 128, 0)
 BYPASS_POINT_RADIUS = 4
-MINI_GRID_COLOR = (180, 180, 40)
+MINI_GRID_COLOR = (200, 0, 200)
 PATH_LINE_THICK = 4
 POSITION_DOT_COLOR = (0, 0, 255)
 POSITION_DOT_RADIUS = 8
@@ -47,6 +47,7 @@ ARROW_COLOR = (128, 0, 128)
 ARROW_LENGTH = 35
 ARROW_THICK = 2
 BLOCKED_CELL_COLOR = (80, 80, 255)
+TRAVERSED_BLOCKED_CELL_COLOR = (0, 165, 255)
 BLOCKED_CELL_ALPHA = 0.28
 RAW_OBSTACLE_COLOR = (0, 0, 255)
 INFLATED_OBSTACLE_COLOR = (255, 0, 255)
@@ -228,7 +229,7 @@ class NavigatorDebug:
             )
 
         self._draw_obstacle_boxes(canvas, frame.obstacles)
-        self._draw_blocked_cells(canvas, frame)
+        self._draw_blocked_cells(canvas, frame, point_path)
 
         # Build the visual path. The first segment starts at the robot's actual
         # pixel position (red dot) rather than the centre of path[0], so the
@@ -467,10 +468,24 @@ class NavigatorDebug:
 
             cv2.rectangle(canvas, (ix1, iy1), (ix2, iy2), INFLATED_OBSTACLE_COLOR, 1)
 
-    def _draw_blocked_cells(self, canvas: np.ndarray, frame) -> None:
+    def _draw_blocked_cells(
+        self,
+        canvas: np.ndarray,
+        frame,
+        point_path: list[tuple[int, int]] | None = None,
+    ) -> None:
         blocked_cells = obstacle_cells_from_frame(frame)
         if not blocked_cells:
             return
+
+        traversed_bounds: set[tuple[int, int, int, int]] = set()
+        if point_path:
+            for point in point_path:
+                bounds = self._cell_bounds_for_point(
+                    point, frame.x_lines, frame.y_lines,
+                )
+                if bounds is not None:
+                    traversed_bounds.add(bounds)
 
         overlay = canvas.copy()
         for cell in blocked_cells:
@@ -478,8 +493,13 @@ class NavigatorDebug:
             if bounds is None:
                 continue
             x1, y1, x2, y2 = bounds
-            cv2.rectangle(overlay, (x1, y1), (x2, y2), BLOCKED_CELL_COLOR, -1)
-            cv2.rectangle(canvas, (x1, y1), (x2, y2), BLOCKED_CELL_COLOR, 2)
+            color = (
+                TRAVERSED_BLOCKED_CELL_COLOR
+                if bounds in traversed_bounds
+                else BLOCKED_CELL_COLOR
+            )
+            cv2.rectangle(overlay, (x1, y1), (x2, y2), color, -1)
+            cv2.rectangle(canvas, (x1, y1), (x2, y2), color, 2)
 
             (tw, th), _ = cv2.getTextSize(
                 "blocked", LABEL_FONT, CELL_LABEL_SCALE, CELL_LABEL_THICK,
@@ -492,7 +512,7 @@ class NavigatorDebug:
                 (cx - tw // 2, cy + th // 2),
                 LABEL_FONT,
                 CELL_LABEL_SCALE,
-                BLOCKED_CELL_COLOR,
+                color,
                 CELL_LABEL_THICK,
                 cv2.LINE_AA,
             )
