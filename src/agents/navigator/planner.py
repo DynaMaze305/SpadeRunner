@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import logging
+
 from pathfinding.mini_grid_planner import MiniGridPlanner
 from pathfinding.pathfinding import obstacle_cells_from_frame, solve_from_frame
+
+logger = logging.getLogger(__name__)
 
 
 # Thin wrapper around solve_from_frame; here so the orchestrator depends on
