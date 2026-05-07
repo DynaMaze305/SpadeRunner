@@ -9,6 +9,7 @@ from agents.navigator.emulation import (
     FakeArucoDrawer,
     FakeExecutor,
     FakeLocalizer,
+    FakeVision,
     SimulationState,
     seeded_photo_source,
 )
@@ -121,6 +122,7 @@ class NavigatorAgent(agent.Agent):
                 )
                 sim = SimulationState(mm_per_pixel=cfg.mm_per_pixel)
                 photo_source = seeded_photo_source(cfg.emulation_seed, photo_source)
+                vision = FakeVision(vision)
                 localizer = FakeLocalizer(localizer, sim)
                 executor = FakeExecutor(sim)
                 debug.localizer = FakeArucoDrawer(debug.localizer, sim)

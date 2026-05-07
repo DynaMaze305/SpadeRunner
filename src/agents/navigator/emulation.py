@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import logging
 import math
 from typing import Awaitable, Callable, Optional
@@ -8,6 +9,7 @@ import cv2
 import numpy as np
 
 from agents.navigator.localization import RobotLocalizationStep, RobotPose
+from agents.navigator.vision_pipeline import VisionError
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +120,28 @@ class SimulationState:
     @staticmethod
     def _normalize(angle: float) -> float:
         return (float(angle) + 180.0) % 360.0 - 180.0
+
+
+class FakeVision:
+    # Wraps MazeVisionPipeline so subsequent steps still decode and process
+    # the real photo (camera_agent + decode latency stays measured) but the
+    # returned frame's image and cropped maze view are swapped back to the
+    # cached/seed equivalents. This keeps every debug panel rendered against
+    # the same visual reference as step 0 while leaving the maze structure
+    # (walls, grid lines, obstacles) untouched.
+    def __init__(self, real) -> None:
+        self.real = real
+
+    def analyze(self, image_bytes):
+        return self.real.analyze(image_bytes)
+
+    def analyze_with_cached_maze(self, image_bytes, cached):
+        result = self.real.analyze_with_cached_maze(image_bytes, cached)
+        if isinstance(result, VisionError):
+            return result
+        new_maze = dict(result.maze)
+        new_maze["cropped"] = cached.maze["cropped"]
+        return dataclasses.replace(result, image=cached.image, maze=new_maze)
 
 
 class FakeArucoDrawer:
