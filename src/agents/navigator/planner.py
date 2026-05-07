@@ -132,7 +132,11 @@ class PathPlanner:
 
             i = run_end
 
-        return self._recompute_orange_runs(new_path, frame)
+        # TEMP REVERT: skip orange-run re-plan; keep the original mini-grid
+        # waypoints inside blocked cells. _recompute_orange_runs is preserved
+        # below for easy re-enable.
+        # return self._recompute_orange_runs(new_path, frame)
+        return new_path
 
     # After collapsing free / pink cells to single-centre waypoints, the
     # orange (blocked) cells still hold mini-grid waypoints that were
