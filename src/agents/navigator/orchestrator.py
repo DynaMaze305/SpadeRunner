@@ -18,12 +18,24 @@ ARUCO_RECOVERY_ROTATIONS = 4
 ARUCO_RECOVERY_ROTATE_DEG = 10.0
 ARUCO_RECOVERY_SLEEP_S = 1.0
 
+# Pause after diverting to a bypass cell, so we don't spam re-plans while
+# waiting for the opponent to clear our path.
+BYPASS_RECHECK_S = 1.0
+
 from common.config import TARGET_ARUCO_ID
 
 from agents.navigator.config import NavigatorConfig
 from agents.navigator.debug import NavigatorDebug
 from agents.navigator.enemy_detection import detect_enemies
 from agents.navigator.localization import RobotLocalizationStep
+from agents.navigator.opponent_predictor import (
+    AVOIDANCE_DISTANCE_CELLS,
+    find_bypass_cell,
+    is_opponent_blocking,
+    manhattan_cells,
+    opponent_target_cell,
+    predict_opponent_path,
+)
 from agents.navigator.planner import PathPlanner
 from agents.navigator.result import NavigationOutcome, NavigationResult
 from agents.navigator.vision_pipeline import (
@@ -364,37 +376,33 @@ class NavigationOrchestrator:
 
             robot_local_pos = self._robot_local_position(frame, robot)
 
-            # Detect enemy markers and lock their cells before planning. This
-            # is recomputed every step so an enemy moving in/out of the maze
-            # is reflected immediately. Only enemies within Manhattan
-            # distance 2 of our current cell are passed to the planner;
-            # farther enemies stay visible on the debug panels but don't
-            # restrict path-finding so distant markers don't lock us out.
+            # Detect enemies (used for the EN squares on debug). The first
+            # one is treated as THE opponent for path prediction.
             enemies = detect_enemies(frame, self.vision.aruco)
-            nearby_enemy_cells = self._nearby_enemy_cells(
-                enemies, current_cell, max_distance=2,
-            )
-            far_enemy_cells = (
-                {e.cell for e in enemies} - nearby_enemy_cells
-            )
-            if nearby_enemy_cells:
-                logger.info(
-                    f"[ENEMY] locked cells this step (<=2 cells away): "
-                    f"{sorted(nearby_enemy_cells)}"
+            opponent = enemies[0] if enemies else None
+
+            # Predict the opponent's coarse A* path so the operator can see
+            # where they're heading. Drawn on the path panel in burnt orange.
+            opponent_path: list[str] | None = None
+            opp_target: str | None = None
+            if opponent is not None:
+                opp_target = opponent_target_cell(self.localizer, frame)
+                opponent_path = predict_opponent_path(
+                    frame, opponent.cell, opp_target,
                 )
-            if far_enemy_cells:
                 logger.info(
-                    f"[ENEMY] detected but >2 cells away, ignoring for "
-                    f"pathing: {sorted(far_enemy_cells)}"
+                    f"[OPP] cell={opponent.cell} target={opp_target} "
+                    f"path={opponent_path}"
                 )
 
+            # Plan our path normally -- no enemy hard-block. We react below
+            # only when the opponent is on our path AND within range.
             point_path = self.planner.plan_points(
                 frame=frame,
                 start_cell=current_cell,
                 end_cell=self.target_cell,
                 start_point=robot_local_pos,
                 goal_point=target_center,
-                extra_blocked_cells=nearby_enemy_cells,
             )
             if point_path is None or len(point_path) < 1:
                 wait_s = cfg.path_blocked_wait_s
@@ -411,10 +419,57 @@ class NavigationOrchestrator:
                     path=None,
                     enemies=enemies,
                     stopped_cell=current_cell,
+                    opponent=opponent,
+                    opponent_path=opponent_path,
                 )
                 if wait_s > 0:
                     await asyncio.sleep(wait_s)
                 continue
+
+            # Opponent-avoidance check. If the opponent sits on our planned
+            # path AND is within AVOIDANCE_DISTANCE_CELLS, divert toward the
+            # closest cell that is NOT on the opponent's predicted path. The
+            # diversion path is drawn on the debug panel in pink so it's
+            # obvious we're in bypass mode.
+            avoidance_path: list[str] | None = None
+            in_avoidance = False
+            our_path_cells = self._cells_in_point_path(point_path, frame)
+            if opponent is not None and opponent_path is not None:
+                distance = manhattan_cells(current_cell, opponent.cell)
+                blocking = is_opponent_blocking(our_path_cells, opponent.cell)
+                if distance is not None:
+                    logger.info(
+                        f"[OPP] distance={distance} blocking={blocking}"
+                    )
+                if (
+                    distance is not None
+                    and distance <= AVOIDANCE_DISTANCE_CELLS
+                    and blocking
+                ):
+                    bypass = find_bypass_cell(
+                        frame, current_cell, opponent_path,
+                    )
+                    if bypass is not None and bypass != current_cell:
+                        bypass_center = self._cell_center_local(bypass, frame)
+                        if bypass_center is not None:
+                            bypass_pp = self.planner.plan_points(
+                                frame=frame,
+                                start_cell=current_cell,
+                                end_cell=bypass,
+                                start_point=robot_local_pos,
+                                goal_point=bypass_center,
+                            )
+                            if bypass_pp and len(bypass_pp) >= 1:
+                                point_path = bypass_pp
+                                avoidance_path = self._cells_in_point_path(
+                                    bypass_pp, frame,
+                                )
+                                in_avoidance = True
+                                logger.warning(
+                                    f"[AVOID] opponent {opponent.cell} blocks "
+                                    f"path -> diverting to bypass cell "
+                                    f"{bypass} via {avoidance_path}"
+                                )
 
             waypoint_info = self._next_point_waypoint(
                 robot_local_pos,
@@ -430,6 +485,10 @@ class NavigationOrchestrator:
                     robot_pose=robot,
                     path=None,
                     point_path=point_path,
+                    enemies=enemies,
+                    opponent=opponent,
+                    opponent_path=opponent_path,
+                    avoidance_path=avoidance_path,
                 )
                 return NavigationResult(
                     NavigationOutcome.REACHED,
@@ -470,6 +529,9 @@ class NavigationOrchestrator:
                 point_path=point_path,
                 next_waypoint=waypoint,
                 enemies=enemies,
+                opponent=opponent,
+                opponent_path=opponent_path,
+                avoidance_path=avoidance_path,
             )
 
             # Push the just-saved per-step path image to the logger.
@@ -496,6 +558,14 @@ class NavigationOrchestrator:
                     boulder_coordinates=latest_boulder_coordinates,
                     boulder_positions_m=latest_boulder_positions_m,
                 )
+
+            # While in bypass mode, throttle re-plans so we don't spin while
+            # waiting for the opponent to move off our path.
+            if in_avoidance:
+                logger.info(
+                    f"[AVOID] sleeping {BYPASS_RECHECK_S:.1f}s before recheck"
+                )
+                await asyncio.sleep(BYPASS_RECHECK_S)
 
         logger.error("[FAIL] Max steps reached")
         return NavigationResult(
@@ -698,22 +768,6 @@ class NavigationOrchestrator:
             return None
         return (row, col)
 
-    @staticmethod
-    def _nearby_enemy_cells(
-        enemies, current_cell: str | None, max_distance: int,
-    ) -> set[str]:
-        current_rc = NavigationOrchestrator._cell_rc(current_cell)
-        if current_rc is None or not enemies:
-            return set()
-        nearby: set[str] = set()
-        for enemy in enemies:
-            e_rc = NavigationOrchestrator._cell_rc(enemy.cell)
-            if e_rc is None:
-                continue
-            manhattan = abs(e_rc[0] - current_rc[0]) + abs(e_rc[1] - current_rc[1])
-            if manhattan <= max_distance:
-                nearby.add(enemy.cell)
-        return nearby
 
     @staticmethod
     def _cell_center_local(
@@ -762,6 +816,9 @@ class NavigationOrchestrator:
         next_waypoint=None,
         enemies=None,
         stopped_cell=None,
+        opponent=None,
+        opponent_path=None,
+        avoidance_path=None,
     ) -> None:
         if self.debug is None:
             return
@@ -775,4 +832,44 @@ class NavigationOrchestrator:
             enemies=enemies,
             next_waypoint=next_waypoint,
             stopped_cell=stopped_cell,
+            opponent=opponent,
+            opponent_path=opponent_path,
+            avoidance_path=avoidance_path,
         )
+
+    # Extracts the ordered list of unique cells visited by a point_path
+    # (a list of pixel waypoints in crop coords). Used to ask "is the
+    # opponent's cell on our path?".
+    @staticmethod
+    def _cells_in_point_path(point_path, frame) -> list[str]:
+        if not point_path or frame is None:
+            return []
+        x_lines = frame.x_lines
+        y_lines = frame.y_lines
+        seen: set[str] = set()
+        cells: list[str] = []
+        for px, py in point_path:
+            cell = NavigationOrchestrator._point_to_cell(px, py, x_lines, y_lines)
+            if cell is not None and cell not in seen:
+                seen.add(cell)
+                cells.append(cell)
+        return cells
+
+    @staticmethod
+    def _point_to_cell(
+        px: float, py: float, x_lines: list[int], y_lines: list[int],
+    ) -> str | None:
+        import string
+        col = None
+        row = None
+        for c in range(len(x_lines) - 1):
+            if x_lines[c] <= px < x_lines[c + 1]:
+                col = c
+                break
+        for r in range(len(y_lines) - 1):
+            if y_lines[r] <= py < y_lines[r + 1]:
+                row = r
+                break
+        if row is None or col is None or row >= len(string.ascii_uppercase):
+            return None
+        return f"{string.ascii_uppercase[row]}{col + 1}"
