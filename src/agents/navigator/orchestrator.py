@@ -372,6 +372,7 @@ class NavigationOrchestrator:
                 robot_pose=robot,
                 path=None,
                 point_path=point_path,
+                next_waypoint=waypoint,
             )
 
             # Push the just-saved per-step path image to the logger.
@@ -636,6 +637,7 @@ class NavigationOrchestrator:
         robot_pose,
         path,
         point_path=None,
+        next_waypoint=None,
     ) -> None:
         if self.debug is None:
             return
@@ -646,4 +648,5 @@ class NavigationOrchestrator:
             robot_pose=robot_pose,
             path=path,
             point_path=point_path,
+            next_waypoint=next_waypoint,
         )
