@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 COLOR_MAP = {
     "orange":   (255, 165, 0),
     "purple":   (128, 0, 128),
+    "green" :   (0, 255,   0),
     "black" :   (0,   0,   0)
 }
 
@@ -91,14 +92,14 @@ class NavigatorAgent(agent.Agent):
                 await self.init_race()
                 return
             
-            if request.body.startswith("paired ") and self.agent.racing and not self.agent.racing_ready:
+            if request.body.startswith("Pairing succesful !") and self.agent.racing and not self.agent.paired:
                 self.agent.paired = True
-                await self.update_leds(request.body.split(' ', 1)[1])
+                await self.update_leds("start:green end:green")
                 await self.confirm_telemetry()
                 return
             
-            # if request.body.lower().startswith("executed command:") and self.agent.racing and self.agent.paired:
             if request.body == "ready_to_race" and self.agent.racing and self.agent.paired:
+                logger.info("TEST")
                 self.agent.racing_ready = True
                 await self.update_leds("start:black end:black")
                 await self.ready_to_race()
@@ -127,12 +128,12 @@ class NavigatorAgent(agent.Agent):
                 await self.send_race_time(request.body.split(': ',1)[1])
                 return
 
-            if request.body.startswith("Pairing failed:"):
+            if request.body.startswith("Pairing failed: "):
                 if self.agent.current_navigator is not None:
                     self.agent.current_navigator = None
-                self.agent.racing = False
+                self.agent.racing = True
                 self.agent.racing_ready = False
-                self.agent.paired = False
+                self.agent.paired = True
                 # The race is finished! Your race time is: 24.908s
                 await self.confirm_telemetry()
                 return
