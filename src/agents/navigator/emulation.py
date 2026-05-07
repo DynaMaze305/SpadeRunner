@@ -120,6 +120,39 @@ class SimulationState:
         return (float(angle) + 180.0) % 360.0 - 180.0
 
 
+class FakeArucoDrawer:
+    # Wraps RobotGridLocalizer so the per-step debug image overlays the
+    # simulated pose instead of the real ArUco detection. On the first call
+    # (step 0, seed frame) it delegates to the real drawer so the seed photo
+    # still shows the actual ArUco markers it was detected from.
+    def __init__(self, real, sim: "SimulationState") -> None:
+        self.real = real
+        self.sim = sim
+        self._first_call = True
+
+    def draw_aruco_debug(self, image):
+        if self._first_call:
+            self._first_call = False
+            return self.real.draw_aruco_debug(image)
+
+        output = image.copy()
+        pose = self.sim.current_pose()
+        cx, cy = pose.center
+        cv2.circle(output, (cx, cy), 6, (0, 255, 255), -1)
+        self.real.aruco.draw_arrow(
+            output, (cx, cy), pose.angle_deg,
+            length=50, thickness=2,
+        )
+        cv2.putText(
+            output, "[EMU]", (cx + 10, cy - 10),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1,
+        )
+        return output
+
+    def draw_robot_grid_debug(self, *args, **kwargs):
+        return self.real.draw_robot_grid_debug(*args, **kwargs)
+
+
 class FakeLocalizer:
     def __init__(self, real: RobotLocalizationStep, sim: SimulationState) -> None:
         self.real = real

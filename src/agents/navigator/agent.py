@@ -6,6 +6,7 @@ from spade.message import Message
 from agents.navigator.config import NavigatorConfig
 from agents.navigator.debug import NavigatorDebug
 from agents.navigator.emulation import (
+    FakeArucoDrawer,
     FakeExecutor,
     FakeLocalizer,
     SimulationState,
@@ -122,6 +123,7 @@ class NavigatorAgent(agent.Agent):
                 photo_source = seeded_photo_source(cfg.emulation_seed, photo_source)
                 localizer = FakeLocalizer(localizer, sim)
                 executor = FakeExecutor(sim)
+                debug.localizer = FakeArucoDrawer(debug.localizer, sim)
 
             orch = NavigationOrchestrator(
                 config=cfg,
