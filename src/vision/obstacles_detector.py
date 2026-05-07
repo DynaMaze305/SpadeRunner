@@ -87,19 +87,23 @@ def detect_robot_exclusion_boxes(
     padding_px: int = ROBOT_EXCLUSION_PADDING_PX,
 ) -> list[Box]:
     detector = aruco_detector or ArucoDetector()
-    result = detector.detect_pose(image, target_id=aruco_id)
-    pose = result["pose"]
-    if pose is None:
+    corners_list, ids, _ = detector.detect(image)
+    if ids is None or corners_list is None:
         return []
 
     h_img, w_img = image.shape[:2]
-    corners = pose["corners"]
-    x1 = max(0, int(np.floor(corners[:, 0].min())) - padding_px)
-    y1 = max(0, int(np.floor(corners[:, 1].min())) - padding_px)
-    x2 = min(w_img - 1, int(np.ceil(corners[:, 0].max())) + padding_px)
-    y2 = min(h_img - 1, int(np.ceil(corners[:, 1].max())) + padding_px)
+    boxes: list[Box] = []
+    for marker_corners in corners_list:
+        pts = np.asarray(marker_corners).reshape(-1, 2)
+        if pts.size == 0:
+            continue
+        x1 = max(0, int(np.floor(pts[:, 0].min())) - padding_px)
+        y1 = max(0, int(np.floor(pts[:, 1].min())) - padding_px)
+        x2 = min(w_img - 1, int(np.ceil(pts[:, 0].max())) + padding_px)
+        y2 = min(h_img - 1, int(np.ceil(pts[:, 1].max())) + padding_px)
+        boxes.append((x1, y1, x2, y2))
 
-    return [(x1, y1, x2, y2)]
+    return boxes
 
 
 def mask_robot_exclusions(
