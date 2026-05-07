@@ -65,7 +65,7 @@ WALL_ADJACENT_MINI_CELL_COLOR = (80, 80, 220)
 OUT_OF_GAME_CELL_COLOR = (20, 20, 20)
 RAW_OBSTACLE_COLOR = (0, 0, 255)
 INFLATED_OBSTACLE_COLOR = (255, 0, 255)
-ROBOT_EXCLUSION_COLOR = (255, 255, 0)
+ROBOT_EXCLUSION_COLOR = (0, 165, 255)
 
 # Target-direction arrow + path info text overlay (BGR).
 TARGET_ARROW_COLOR = (0, 180, 0)
@@ -630,6 +630,11 @@ class NavigatorDebug:
 
         canvas = cv2.cvtColor(frame.obstacle_mask, cv2.COLOR_GRAY2BGR)
 
+        if frame.grid_walls:
+            RobotGridLocalizer._draw_walls(
+                canvas, frame.grid_walls, frame.x_lines, frame.y_lines,
+            )
+
         for x1, y1, x2, y2 in frame.obstacles:
             cv2.rectangle(canvas, (x1, y1), (x2, y2), RAW_OBSTACLE_COLOR, 2)
 
@@ -637,7 +642,7 @@ class NavigatorDebug:
             cv2.rectangle(canvas, (x1, y1), (x2, y2), ROBOT_EXCLUSION_COLOR, 2)
             cv2.putText(
                 canvas,
-                "robot ignored",
+                "aruco ignored",
                 (x1, max(12, y1 - 6)),
                 LABEL_FONT,
                 0.45,
@@ -649,7 +654,7 @@ class NavigatorDebug:
         self._draw_obstacle_boxes(canvas, frame.obstacles)
         cv2.putText(
             canvas,
-            f"raw=red inflated=magenta aruco-ignore=cyan obstacle={self.obstacle_margin_px}px robot={self.robot_margin_px}px",
+            f"raw=red inflated=magenta aruco-ignore=orange obstacle={self.obstacle_margin_px}px robot={self.robot_margin_px}px",
             (8, 22),
             LABEL_FONT,
             0.45,
