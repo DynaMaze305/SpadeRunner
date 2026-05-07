@@ -305,11 +305,27 @@ class NavigationOrchestrator:
 
             # Detect enemy markers and lock their cells before planning. This
             # is recomputed every step so an enemy moving in/out of the maze
-            # is reflected immediately.
+            # is reflected immediately. Only enemies within Manhattan
+            # distance 2 of our current cell are passed to the planner;
+            # farther enemies stay visible on the debug panels but don't
+            # restrict path-finding so distant markers don't lock us out.
             enemies = detect_enemies(frame, self.vision.aruco)
-            enemy_cells = {e.cell for e in enemies}
-            if enemy_cells:
-                logger.info(f"[ENEMY] locked cells this step: {sorted(enemy_cells)}")
+            nearby_enemy_cells = self._nearby_enemy_cells(
+                enemies, current_cell, max_distance=2,
+            )
+            far_enemy_cells = (
+                {e.cell for e in enemies} - nearby_enemy_cells
+            )
+            if nearby_enemy_cells:
+                logger.info(
+                    f"[ENEMY] locked cells this step (<=2 cells away): "
+                    f"{sorted(nearby_enemy_cells)}"
+                )
+            if far_enemy_cells:
+                logger.info(
+                    f"[ENEMY] detected but >2 cells away, ignoring for "
+                    f"pathing: {sorted(far_enemy_cells)}"
+                )
 
             point_path = self.planner.plan_points(
                 frame=frame,
@@ -317,7 +333,7 @@ class NavigationOrchestrator:
                 end_cell=self.target_cell,
                 start_point=robot_local_pos,
                 goal_point=target_center,
-                extra_blocked_cells=enemy_cells,
+                extra_blocked_cells=nearby_enemy_cells,
             )
             if point_path is None or len(point_path) < 1:
                 wait_s = cfg.path_blocked_wait_s
@@ -617,6 +633,23 @@ class NavigationOrchestrator:
         if row < 0 or col < 0:
             return None
         return (row, col)
+
+    @staticmethod
+    def _nearby_enemy_cells(
+        enemies, current_cell: str | None, max_distance: int,
+    ) -> set[str]:
+        current_rc = NavigationOrchestrator._cell_rc(current_cell)
+        if current_rc is None or not enemies:
+            return set()
+        nearby: set[str] = set()
+        for enemy in enemies:
+            e_rc = NavigationOrchestrator._cell_rc(enemy.cell)
+            if e_rc is None:
+                continue
+            manhattan = abs(e_rc[0] - current_rc[0]) + abs(e_rc[1] - current_rc[1])
+            if manhattan <= max_distance:
+                nearby.add(enemy.cell)
+        return nearby
 
     @staticmethod
     def _cell_center_local(

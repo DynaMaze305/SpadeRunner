@@ -47,7 +47,7 @@ class MotionClient:
         # Usage example: rotation 90
         # 90 angle in degrees
 
-        # robot uses "0" as the null sentinel — convert any None field before formatting
+        # robot uses "0" as the null sentinel , convert any None field before formatting
         signed_degrees = 0 if signed_degrees is None else signed_degrees
         duration = 0 if duration is None else duration
         pwm = 0 if pwm is None else pwm
