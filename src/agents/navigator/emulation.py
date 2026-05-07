@@ -4,6 +4,9 @@ import logging
 import math
 from typing import Awaitable, Callable, Optional
 
+import cv2
+import numpy as np
+
 from agents.navigator.localization import RobotLocalizationStep, RobotPose
 
 logger = logging.getLogger(__name__)
@@ -19,10 +22,22 @@ def seeded_photo_source(
         nonlocal served
         if not served:
             with open(seed_path, "rb") as f:
-                data = f.read()
+                raw = f.read()
+            # Saved per-step raw.jpg files are post-rotation (right-side-up).
+            # The vision pipeline always 180-rotates incoming bytes inside
+            # Camera.decode_image, so we counter-rotate here to mimic raw
+            # upside-down camera bytes.
+            arr = np.frombuffer(raw, dtype=np.uint8)
+            img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            if img is None:
+                raise ValueError(f"could not decode seed image {seed_path}")
+            img = cv2.rotate(img, cv2.ROTATE_180)
+            ok, encoded = cv2.imencode(".jpg", img)
+            if not ok:
+                raise ValueError(f"could not re-encode seed image {seed_path}")
             served = True
             logger.info(f"[EMU] seeded first photo from {seed_path}")
-            return data
+            return encoded.tobytes()
         return await real_source(label)
 
     return source
