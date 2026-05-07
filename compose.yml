@@ -37,6 +37,10 @@ services:
       - "isc-coordinator3.lan:192.168.31.163"
     env_file:
       - .env
+    environment:
+      # Forwarded from the shell so `NAVIGATOR_EMULATION_SEED=path docker compose up app`
+      # actually engages headless emulation. Empty / unset = production mode.
+      NAVIGATOR_EMULATION_SEED: "${NAVIGATOR_EMULATION_SEED:-}"
     stdin_open: true # to let the container open to external signal
     tty: true # enable "keep the container running"
     ports:
