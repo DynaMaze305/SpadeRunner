@@ -16,6 +16,10 @@ class PathPlanner:
         mini_grid_planner: MiniGridPlanner | None = None,
     ) -> None:
         self.mini_grid_planner = mini_grid_planner
+        # Last corridor whose mini-grid solver returned None. Used by the
+        # iterative replan in plan_points to know exactly which cells to
+        # mark as extra-blocked on the next attempt.
+        self._last_failed_corridor: list[str] | None = None
 
     def plan(
         self,
@@ -37,18 +41,18 @@ class PathPlanner:
         if self.mini_grid_planner is None:
             return None
 
-        # Iterative replan: when a coarse candidate's mini-grid corridor
-        # can't be threaded (obstacle margin + wall-adjacent mini-cells
-        # together close off every portal of one of its blocked cells),
-        # mark the obstacle cells that were on that candidate as extra
-        # blocked and ask the cell-A* for a different coarse route. Keep
-        # going until we thread something or the cell-A* runs out of
-        # alternatives. Cap is just a guard against pathological frames.
+        # Iterative replan. When a coarse candidate's mini-grid corridor
+        # can't be threaded, we mark only the obstacle cells of THAT
+        # specific failed corridor as extra-blocked and ask the cell-A*
+        # for a different coarse route. Other corridors on the same
+        # candidate that threaded fine stay usable. The cap is just a
+        # guard against a pathological frame -- in practice the loop
+        # converges in a handful of iterations.
         extra: set[str] = set(extra_blocked_cells or [])
         baseline_extra = set(extra)
         obstacle_cells = obstacle_cells_from_frame(frame)
         visited: set[tuple[str, ...]] = set()
-        max_attempts = 10
+        max_attempts = 50
 
         for attempt in range(max_attempts):
             candidates = self._candidate_coarse_paths(
@@ -68,6 +72,7 @@ class PathPlanner:
                     continue
                 visited.add(key)
 
+                self._last_failed_corridor = None
                 point_path = self._points_from_coarse_path(
                     frame=frame,
                     coarse_path=coarse_path,
@@ -84,19 +89,21 @@ class PathPlanner:
                         )
                     return self._post_process_point_path(point_path, frame)
 
-                # Mark obstacle cells from this failed candidate so the next
-                # coarse attempt has to detour around them. Never mark the
-                # start or end cell.
-                new_extras = (set(coarse_path) & obstacle_cells) - extra
+                # Only mark obstacle cells from the SPECIFIC failed corridor.
+                # Other corridors on the same candidate threaded fine, so
+                # blocking their cells too would over-restrict the next
+                # cell-A* call. Never mark start or end.
+                failed_corridor = self._last_failed_corridor or coarse_path
+                new_extras = (set(failed_corridor) & obstacle_cells) - extra
                 new_extras.discard(start_cell)
                 new_extras.discard(end_cell)
                 if new_extras:
                     extra |= new_extras
                     added = True
                     logger.warning(
-                        f"[PLAN] candidate #{index} failed mini-grid "
-                        f"expansion: {coarse_path} -- marking "
-                        f"{sorted(new_extras)} as extra-blocked"
+                        f"[PLAN] candidate #{index} failed in corridor "
+                        f"{failed_corridor} -- marking {sorted(new_extras)} "
+                        f"as extra-blocked"
                     )
 
             if not added:
@@ -385,6 +392,10 @@ class PathPlanner:
                     f"corridor={corridor_cells} start={corridor_start} "
                     f"goal={corridor_goal}"
                 )
+                # Record which corridor failed so plan_points only marks
+                # obstacle cells from THIS corridor, not from the rest of
+                # the coarse path that threaded fine.
+                self._last_failed_corridor = list(corridor_cells)
                 return None
 
             for point in mini_points:
