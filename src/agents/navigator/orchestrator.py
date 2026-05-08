@@ -22,6 +22,13 @@ ARUCO_RECOVERY_SLEEP_S = 1.0
 # waiting for the opponent to clear our path.
 BYPASS_RECHECK_S = 1.0
 
+# When the opponent has NO target (no goal marker visible for them), we
+# treat their cell as a locked obstacle and try to plan around it. If
+# even that fails, we wait this short interval before retrying instead
+# of the longer cfg.path_blocked_wait_s -- the opponent may move at any
+# moment and we want to retry quickly.
+STATIONARY_OPP_WAIT_S = 1.0
+
 from common.config import TARGET_ARUCO_ID
 
 from agents.navigator.config import NavigatorConfig
@@ -380,48 +387,56 @@ class NavigationOrchestrator:
             enemies = detect_enemies(frame, self.vision.aruco)
             opponent = enemies[0] if enemies else None
 
-            # Predict where the opponent is heading. If their target ArUco
-            # is not visible (no goal marker for them on the frame), we
-            # assume they're stationary -- their "path" is just their
-            # current cell.
+            # Predict where the opponent is heading. Two regimes:
+            #   - Has target: predicted A* path is real -> we plan our goal
+            #     route normally and use the on-our-path emergency bypass.
+            #   - No target visible (or path computation failed): the
+            #     opponent is stationary; we just hard-block their cell and
+            #     plan AROUND them. No bypass dance, no emergency.
             opponent_path: list[str] | None = None
             opp_target: str | None = None
+            opp_has_target = False
             if opponent is not None:
                 opp_target = opponent_target_cell(self.localizer, frame)
                 if opp_target is not None:
                     opponent_path = predict_opponent_path(
                         frame, opponent.cell, opp_target,
                     )
-                # Fallback: target not visible OR predicted path failed --
-                # opponent is treated as a stationary one-cell obstacle.
-                if not opponent_path:
-                    opponent_path = [opponent.cell]
-                    logger.info(
-                        f"[OPP] no target ArUco visible -> treating "
-                        f"opponent at {opponent.cell} as stationary"
-                    )
-                else:
+                if opponent_path:
+                    opp_has_target = True
                     logger.info(
                         f"[OPP] cell={opponent.cell} target={opp_target} "
                         f"path={opponent_path}"
                     )
-            # Plan our path normally. No opponent hard-block -- we let the
-            # planner produce its honest A* route so we can detect when the
-            # opponent sits on it below.
+                else:
+                    # No target ArUco OR path computation failed -> stationary.
+                    # Single-cell "path" lets the debug renderer still draw
+                    # the EN cell + purple dot.
+                    opponent_path = [opponent.cell]
+                    logger.info(
+                        f"[OPP] no target ArUco -> treating opponent at "
+                        f"{opponent.cell} as a locked cell"
+                    )
+
+            # Goal plan. With a stationary opponent we hard-block their
+            # cell so we just route around. With a moving opponent we plan
+            # honestly so the on-our-path bypass below can trigger.
+            stationary_block_cells: set[str] = set()
+            if opponent is not None and not opp_has_target:
+                stationary_block_cells = {opponent.cell}
             point_path = self.planner.plan_points(
                 frame=frame,
                 start_cell=current_cell,
                 end_cell=self.target_cell,
                 start_point=robot_local_pos,
                 goal_point=target_center,
+                extra_blocked_cells=stationary_block_cells,
             )
 
-            # Emergency avoidance: opponent within
-            # EMERGENCY_AVOIDANCE_DISTANCE_CELLS Manhattan AND opponent's
-            # current cell is on our planned path. Bypass = first cell
-            # reachable from us that is NOT on the opponent's predicted
-            # path. Bypass overrides the goal plan; the next frame replans
-            # from the new position.
+            # Emergency avoidance ONLY applies to a moving opponent. With
+            # a stationary opponent the cell is already hard-blocked
+            # above, so a None point_path just means "no route avoiding
+            # the locked cell" and we'll WAIT briefly below.
             avoidance_path: list[str] | None = None
             in_avoidance = False
             opp_distance = (
@@ -429,7 +444,8 @@ class NavigationOrchestrator:
                 if opponent is not None else None
             )
             if (
-                point_path is not None
+                opp_has_target
+                and point_path is not None
                 and opponent is not None
                 and opponent_path is not None
                 and opp_distance is not None
@@ -473,7 +489,12 @@ class NavigationOrchestrator:
                             )
 
             if point_path is None or len(point_path) < 1:
-                wait_s = cfg.path_blocked_wait_s
+                # Stationary-opponent case retries quickly; geometric
+                # no-path case uses the longer configured WAIT.
+                if opponent is not None and not opp_has_target:
+                    wait_s = STATIONARY_OPP_WAIT_S
+                else:
+                    wait_s = cfg.path_blocked_wait_s
                 logger.error(
                     "[NO PATH FOUND] PATH BLOCKED -- "
                     f"ROBOT STOPPED IN CELL {current_cell} -- "
