@@ -4,7 +4,7 @@ import os
 from aiohttp import web, WSMsgType
 from common.config import *
 
-from dashboard.render.PageComponent import PageComponent
+from dashboard.render.PageComponent import PageComponent, row
 from dashboard.render.AnalogGraphComponent import AnalogGraphComponent
 from dashboard.render.DigitalGraphComponent import DigitalGraphComponent
 from dashboard.render.BatteryGaugeComponent import BatteryGaugeComponent
@@ -16,6 +16,7 @@ from dashboard.render.SelectBotComponent import SelectedBotComponent
 from dashboard.render.SliderComponent import SliderComponent
 from dashboard.render.DisplayComponent import ImageDisplayComponent
 from dashboard.render.TimeComponent import RaceTimeComponent
+from dashboard.render.LedComponents import Alphabot2Leds
 
 
 XMPP_DOMAIN = os.environ.get("XMPP_DOMAIN", "prosody")
@@ -23,7 +24,6 @@ BUTTONS = [
     # target_jid full jid will be managed by the agent put only the first part
     # However if you want to put the full JID don't forget the @
     {"text": "Start", "target_jid": "navigator", "command": "request path"},
-    {"text": "Register", "target_jid": "sensors", "command": "register"},
     {"text": "Calibrate ratio", "target_jid": "calibrator", "command": "calibrate ratio"},
     {"text": "Calibrate rotation", "target_jid": "calibrator", "command": "calibrate rotation"},
     {"text": "Calibrate distance", "target_jid": "calibrator", "command": "calibrate distance"},
@@ -31,6 +31,7 @@ BUTTONS = [
     {"text": "Ready Race", "target_jid": "navigator", "command": "ready_to_race"},
 ]
 PLAY_BUTTON = [
+    {"text": "Register", "target_jid": "sensors", "command": "register"},
     {"text": "Penality", "target_jid": "navigator", "command": "penality"},
     {"text": "Buzzer", "target_jid": "camera", "command": "buzz"},
     {"text": "Light", "target_jid": "camera", "command": "leds 0 255 0 0 1 0 255 0 2 0 0 255 3 255 255 255"},
@@ -83,6 +84,8 @@ class Dashboard:
         digitals = DigitalGraphComponent(DIGITAL_GRAPH)
         sliders = SliderComponent(SLIDERS)
         display = ImageDisplayComponent()
+        leds = Alphabot2Leds()
+
         components = [
             PageComponent(),
             SelectedBotComponent(SELECT_BOT),
@@ -96,7 +99,7 @@ class Dashboard:
             play_button,
             AnalogGraphComponent(),
             digitals,
-            sliders
+            leds
         ]
 
         css = "".join(c.render_css() for c in components)         # The css style of the component
@@ -124,6 +127,7 @@ class Dashboard:
                 digitals.render_html()
             )
             + sliders.render_html()
+            + leds.render_html()
         )
         return f"""<html>
 <head>
@@ -132,7 +136,8 @@ class Dashboard:
 <body>
 
 <h1>Robot Dashboard</h1>
-<div id="ts">Timestamp: --</div>
+<div id="ts">Time: --</div>
+<div id="chrono">Chrono: 00:00:00</div>
 
 {html_blocks}
 
@@ -140,45 +145,72 @@ class Dashboard:
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 
 <script>
-            const ws = new WebSocket("ws://" + location.host + "/ws");
+    // --- Live Clock ---
+    function updateClock() {{
+        const now = new Date();
+        const timeString = now.toLocaleTimeString('fr-CH'); // hh:mm:ss
+        document.getElementById("ts").textContent = "Time: " + timeString;
+    }}
+    // --- Chronometer ---
+    let chronoInterval;
+    let chronoStartTime;
 
+    function startChrono() {{
+        chronoStartTime = Date.now();
 
+        clearInterval(chronoInterval);
+        chronoInterval = setInterval(() => {{
+            const elapsed = Date.now() - chronoStartTime;
+
+            const hours = String(Math.floor(elapsed / 3600000)).padStart(2, '0');
+            const minutes = String(Math.floor((elapsed % 3600000) / 60000)).padStart(2, '0');
+            const seconds = String(Math.floor((elapsed % 60000) / 1000)).padStart(2, '0');
+
+            document.getElementById("chrono").textContent =
+                `Chrono: ${{hours}}:${{minutes}}:${{seconds}}`;
+        }}, 1000);
+    }}
+
+    const ws = new WebSocket("ws://" + location.host + "/ws");
 
 {js_script}
 
-ws.onmessage = (event) => {{
-    let msg;
+    ws.onmessage = (event) => {{
+        let msg;
 
-    try {{
-        msg = JSON.parse(event.data);
-    }} catch (e) {{
-        console.warn("Invalid JSON from server:", event.data);
-        return;
-    }}
+        try {{
+            msg = JSON.parse(event.data);
+        }} catch (e) {{
+            console.warn("Invalid JSON from server:", event.data);
+            return;
+        }}
 
 {js_update}
-    if (msg.type === "data") {{
-        return;
-    }}
+        if (msg.type === "data") {{
+            return;
+        }}
 
-    switch (msg.type) {{
+        switch (msg.type) {{
 
-        case "register_ok":
-            console.log("Registered to bot:", msg.bot);
-            break;
+            case "register_ok":
+                console.log("Registered to bot:", msg.bot);
+                break;
 
-        case "register_exists":
-            console.log("Already registered:", msg.bot);
-            break;
+            case "register_exists":
+                console.log("Already registered:", msg.bot);
+                break;
 
-        case "error":
-            console.error("Bot error:", msg.message);
-            break;
+            case "error":
+                console.error("Bot error:", msg.message);
+                break;
 
-        default:
-            console.warn("Unknown message type:", msg.type);
-    }}
-}};
+            default:
+                console.warn("Unknown message type:", msg.type);
+        }}
+    }};
+
+    setInterval(updateClock, 1000);
+    updateClock();
 </script>
 
 </body>
@@ -205,8 +237,12 @@ ws.onmessage = (event) => {{
         async for msg in ws:
             if msg.type == WSMsgType.TEXT:
                 data = json.loads(msg.data)
-                if "command" in data:
+                cmd_type = data["type"]
+                if "command" == cmd_type:
                     await agent.handle_command(data["command"], data["target"], data["value"])
+                if "play" == cmd_type:
+                    await agent.handle_play(data["command"], data["target"], data["value"])
+
 
         self.websockets.discard(ws)
         return ws
@@ -267,14 +303,4 @@ ws.onmessage = (event) => {{
         app.router.add_get("/api/total_time", self._get_total_time)
 
         return app
-
-# ---------------------------------------------------------
-#  HTML RENDERS HELPER
-# ---------------------------------------------------------
-def row(*components_html):
-    return (
-        '<div style="display:flex; gap:20px; align-items:flex-start;">'
-        + "".join(f'<div style="flex:1;">{html}</div>' for html in components_html)
-        + "</div>"
-    )
 
