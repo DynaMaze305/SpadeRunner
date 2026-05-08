@@ -71,12 +71,20 @@ def manhattan_cells(a: str | None, b: str | None) -> int | None:
 
 
 def find_bypass_cell(
-    frame, our_cell: str, opponent_path: list[str] | None,
+    frame,
+    our_cell: str,
+    opponent_path: list[str] | None,
+    blocked_for_expansion: set[str] | None = None,
 ) -> str | None:
-    # BFS through the wall graph. Returns the closest cell to `our_cell`
-    # that is NOT on the opponent's predicted path. If no opponent path
-    # is available, fall back to "any neighbour".
+    # BFS through the wall graph from our_cell. Returns the closest cell
+    # that is NOT on the opponent's predicted path. `blocked_for_expansion`
+    # cells (typically the opponent's CURRENT cell) are treated as walls
+    # for the BFS itself so we only find cells reachable without driving
+    # THROUGH the opponent -- otherwise the BFS would happily walk past
+    # them and pick a candidate on the far side, forcing the bypass plan
+    # to take the long way around.
     forbidden = set(opponent_path or [])
+    expand_blocked = set(blocked_for_expansion or [])
     visited = {our_cell}
     queue: deque[str] = deque([our_cell])
     while queue:
@@ -84,7 +92,7 @@ def find_bypass_cell(
         if cell != our_cell and cell not in forbidden:
             return cell
         for nb in _neighbors(cell, frame):
-            if nb in visited:
+            if nb in visited or nb in expand_blocked:
                 continue
             visited.add(nb)
             queue.append(nb)

@@ -440,8 +440,12 @@ class NavigationOrchestrator:
                     f"[AVOID] opponent {opponent.cell} sits on our path "
                     f"(distance={opp_distance})"
                 )
+                # Pick a bypass cell that's reachable from us WITHOUT going
+                # through the opponent, and that isn't on their predicted
+                # path either.
                 bypass = find_bypass_cell(
                     frame, current_cell, opponent_path,
+                    blocked_for_expansion={opponent.cell},
                 )
                 if bypass is not None and bypass != current_cell:
                     bypass_center = self._cell_center_local(bypass, frame)
