@@ -9,7 +9,7 @@ class PlayButtonsComponent(DashboardComponent):
         for btn in self.buttons:
             html += (
                 f'<button onclick="sendPlayCommand('
-                f'{{type: \'button\', command: \'{btn["command"]}\', target: \'{btn["target_jid"]}\', value: \'\'}})">'
+                f'{{type: \'play\', command: \'{btn["command"]}\', target: \'{btn["target_jid"]}\', value: \'\'}})">'
                 f'{btn["text"]}</button>'
             )
         html += "</div>"

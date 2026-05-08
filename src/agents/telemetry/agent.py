@@ -168,7 +168,7 @@ class TelemetryAgent(agent.Agent):
             logger.warning(f"[AGENT] Unknown message type: {msg_type}")
             logger.warning(f"[AGENT] {msg}")
 
-    class XMPPSendMessage(behaviour.OneShotBehaviour):
+    class XMPPSendCommandMessage(behaviour.OneShotBehaviour):
         def __init__(self, cmd: str, target: str, value: str):
             super().__init__()
             self.cmd = cmd
@@ -197,6 +197,25 @@ class TelemetryAgent(agent.Agent):
                 }
                 self.agent.current_button = None
                 await self.agent.dashboard.broadcast(sample)
+
+    class XMPPSendPlayMessage(behaviour.OneShotBehaviour):
+        def __init__(self, cmd: str, target: str, value: str):
+            super().__init__()
+            self.cmd = cmd
+            self.target = target
+            self.value = value
+
+        async def run(self):
+            logger.info(f"[AGENT] handle_command: {self.cmd}")
+
+            msg = Message(to=self.target)
+            msg.set_metadata("performative", "request")
+            if self.value == "":
+                msg.body = f"{self.cmd}"
+            else:
+                msg.body = f"{self.cmd} {self.value}"
+            await self.send(msg)
+            logger.info(f"[AGENT] Sent XMPP message: {msg}")
 
     # ---------- helpers ----------
     def _payload_to_samples(self, payload: dict) -> dict:
@@ -240,10 +259,17 @@ class TelemetryAgent(agent.Agent):
 
     async def handle_command(self, cmd: str, target: str, value: str = None):
         if "@" in target:
-            self.add_behaviour(self.XMPPSendMessage(cmd, target, value))
+            self.add_behaviour(self.XMPPSendCommandMessage(cmd, target, value))
         else:
             target += f"-{self.selected_bot}@{COORDINATOR_HOST}"
-            self.add_behaviour(self.XMPPSendMessage(cmd, target, value))
+            self.add_behaviour(self.XMPPSendCommandMessage(cmd, target, value))
+
+    async def handle_play(self, cmd: str, target: str, value: str = None):
+        if "@" in target:
+            self.add_behaviour(self.XMPPSendPlayMessage(cmd, target, value))
+        else:
+            target += f"-{self.selected_bot}@{COORDINATOR_HOST}"
+            self.add_behaviour(self.XMPPSendPlayMessage(cmd, target, value))
 
     # ---------- setup ----------
     def set_selected_bot(self, bot):
