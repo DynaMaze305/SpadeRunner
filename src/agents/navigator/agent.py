@@ -20,7 +20,6 @@ from agents.navigator.vision_pipeline import MazeVisionPipeline
 
 from common.camera_client import CameraClient
 from common.config import *
-from common.config import TELEMETRY_JID, ROBOT_JID, UR_JID
 from common.path_motion_executor import PathMotionExecutor
 from common.run_dir import new_run_dir
 
@@ -52,7 +51,7 @@ def color_to_rgb(name: str):
     return COLOR_MAP[name]
 
 class NavigatorAgent(agent.Agent):
-    ENV_PREFIX = "NAVIGATOR"
+    AGENT_JID = NAVIGATOR_JID
 
     def __init__(self, jid, password, verify_security = False):
         super().__init__(jid, password, verify_security)
@@ -92,7 +91,7 @@ class NavigatorAgent(agent.Agent):
                 await self.init_race()
                 return
             
-            if request.body.startswith("Pairing succesful !") and self.agent.racing and not self.agent.paired:
+            if request.body.startswith("Pairing successful !") and self.agent.racing and not self.agent.paired:
                 self.agent.paired = True
                 await self.update_leds("start:green end:green")
                 await self.confirm_telemetry()
@@ -104,8 +103,8 @@ class NavigatorAgent(agent.Agent):
                 await self.update_leds("start:black end:black")
                 await self.ready_to_race()
                 return
-            
-            if request.body == "Go!!" and self.agent.racing_ready and self.agent.current_navigator is not None:
+
+            if request.body == "Go !!!" and self.agent.racing_ready and self.agent.current_navigator is None:
                 self.agent.current_navigator = self.agent.NavigateBehaviour()
                 self.agent.current_requester = str(request.sender.bare())
                 self.agent.add_behaviour(self.agent.current_navigator)

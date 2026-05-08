@@ -12,6 +12,7 @@ import logging
 from spade import agent, behaviour
 
 from common.camera_client import CameraClient
+from common.config import *
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 PHOTOS_DIR = "received_photos"
 
 class CameraReceiverAgent(agent.Agent):
-    ENV_PREFIX = "CAMERA_RECEIVER"
+    AGENT_JID =RECEIVER_JID
     class CameraReceiveBehaviour(behaviour.OneShotBehaviour):
         async def run(self):
             camera = CameraClient(self)
