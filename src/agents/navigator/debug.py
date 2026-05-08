@@ -80,17 +80,13 @@ ENEMY_CELL_ALPHA = 0.40
 # stopped because no valid path was found this step.
 STOPPED_CELL_COLOR = (0, 220, 0)
 STOPPED_CELL_ALPHA = 0.45
-# Burnt-orange polyline drawn over the opponent's predicted A* route on
-# the path panel. Distinct from our own path orange so the two are
-# visually separable at a glance.
+# Burnt-orange polyline for the opponent's predicted path.
 OPPONENT_PATH_COLOR = (40, 120, 230)
 OPPONENT_PATH_THICK = 3
-# Purple dot drawn at the opponent's exact pixel location inside its EN cell.
+# Purple dot at the opponent's pixel position.
 OPPONENT_DOT_COLOR = (200, 0, 200)
 OPPONENT_DOT_RADIUS = 7
-# Pink polyline drawn when the opponent is blocking us and we re-route
-# toward a safe bypass cell. Same convention as our path: cell-centre to
-# cell-centre.
+# Pink polyline for the bypass route during emergency avoidance.
 AVOIDANCE_PATH_COLOR = (203, 192, 255)
 AVOIDANCE_PATH_THICK = 3
 
@@ -311,12 +307,7 @@ class NavigatorDebug:
                 thickness = 2 if point_path else PATH_LINE_THICK
                 cv2.line(canvas, a, b, color, thickness)
 
-        # Always draw the mini-grid lattice on every blocked cell, even when
-        # there's no path this step. The second loop inside this function
-        # paints every blocked cell with the yellow border + dark-red obstacle
-        # minis + light-red wall-adjacent minis regardless of which the path
-        # crosses, so we get the same discretisation on WAIT cards as on
-        # successful ones.
+        # Draw the mini-grid lattice on every blocked cell, even when no path.
         self._draw_mini_grid_for_points(canvas, frame, point_path or [])
 
         if point_path and len(point_path) >= 1:
@@ -422,8 +413,7 @@ class NavigatorDebug:
 
         return canvas
 
-    # Draws the opponent's predicted A* route as a burnt-orange polyline,
-    # cell-centre to cell-centre, with small filled circles at each cell.
+    # Draw the opponent's predicted path as an orange polyline.
     def _draw_opponent_path(
         self, canvas: np.ndarray, frame, opponent_path: list[str],
     ) -> None:
@@ -441,7 +431,7 @@ class NavigatorDebug:
         for c in centres:
             cv2.circle(canvas, c, 5, OPPONENT_PATH_COLOR, -1)
 
-    # Draws our pink fallback route to the closest cell off the opponent's path.
+    # Draw the pink bypass route during emergency avoidance.
     def _draw_avoidance_path(
         self, canvas: np.ndarray, frame, avoidance_path: list[str],
     ) -> None:
@@ -459,9 +449,7 @@ class NavigatorDebug:
         for c in centres:
             cv2.circle(canvas, c, 6, AVOIDANCE_PATH_COLOR, -1)
 
-    # Purple dot at the opponent's exact pixel position inside its EN cell.
-    # `opponent` is an EnemyMarker (corners are FULL-image coords; we shift
-    # to crop coords using the maze crop_bbox).
+    # Draw the purple dot at the opponent's pixel position.
     def _draw_opponent_dot(self, canvas: np.ndarray, frame, opponent) -> None:
         corners = getattr(opponent, "corners", None)
         if corners is None or corners.size == 0:

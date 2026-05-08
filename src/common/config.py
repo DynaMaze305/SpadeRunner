@@ -17,7 +17,7 @@ ARUCO_ID = ARUCO_IDS[ROBOT_NUM]
 
 # Per-robot target marker. The navigator detects this marker at the start of a
 # run and uses the cell where it lies as the goal, instead of a hardcoded one.
-TARGET_ARUCO_IDS = {"1": 1, "3": 2}
+TARGET_ARUCO_IDS = {"1": 2, "3": 1}
 TARGET_ARUCO_ID = TARGET_ARUCO_IDS[ROBOT_NUM]
 
 # Per-robot angle offset compensating for the marker mounting direction.

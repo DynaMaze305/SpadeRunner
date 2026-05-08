@@ -10,23 +10,15 @@ from typing import Awaitable, Callable, Optional
 MAX_DETECT_ATTEMPTS = 3
 RETRY_DELAY_S = 0.2
 
-# After photo retries fail, the navigator nudges the robot by small rotations
-# to bring its ArUco back into view (e.g. when a wall is occluding the marker).
-# Each recovery attempt rotates by ARUCO_RECOVERY_ROTATE_DEG, sleeps to let
-# the motion + camera settle, takes a fresh photo, and retries detection.
+# Rotation recovery when the ArUco is missing after photo retries.
 ARUCO_RECOVERY_ROTATIONS = 4
 ARUCO_RECOVERY_ROTATE_DEG = 10.0
 ARUCO_RECOVERY_SLEEP_S = 1.0
 
-# Pause after diverting to a bypass cell, so we don't spam re-plans while
-# waiting for the opponent to clear our path.
+# Pause after a bypass move so we re-plan slowly.
 BYPASS_RECHECK_S = 1.0
 
-# When the opponent has NO target (no goal marker visible for them), we
-# treat their cell as a locked obstacle and try to plan around it. If
-# even that fails, we wait this short interval before retrying instead
-# of the longer cfg.path_blocked_wait_s -- the opponent may move at any
-# moment and we want to retry quickly.
+# Short wait when a stationary opponent leaves no route to target.
 STATIONARY_OPP_WAIT_S = 1.0
 
 from common.config import TARGET_ARUCO_ID
@@ -263,9 +255,7 @@ class NavigationOrchestrator:
                 )
                 robot = self.localizer.locate(frame)
 
-            # Photo retries exhausted: nudge the robot with a small rotation
-            # and try again. ArUcos can vanish when a wall is occluding the
-            # marker; rotating brings them back into view.
+            # Rotate slightly between photos to bring the ArUco back in view.
             if robot is None:
                 logger.warning(
                     f"[ROBOT] aruco not detected after {MAX_DETECT_ATTEMPTS} "
@@ -304,7 +294,7 @@ class NavigationOrchestrator:
                         )
                         break
 
-            # Recovery exhausted -- stop the navigator.
+            # Stop the run if rotation recovery also fails.
             if robot is None:
                 logger.error(
                     f"[ROBOT] aruco still not detected after "
@@ -382,17 +372,11 @@ class NavigationOrchestrator:
 
             robot_local_pos = self._robot_local_position(frame, robot)
 
-            # Detect enemies (used for the EN squares on debug). The first
-            # one is treated as THE opponent for path prediction.
+            # First detected enemy is treated as the opponent.
             enemies = detect_enemies(frame, self.vision.aruco)
             opponent = enemies[0] if enemies else None
 
-            # Predict where the opponent is heading. Two regimes:
-            #   - Has target: predicted A* path is real -> we plan our goal
-            #     route normally and use the on-our-path emergency bypass.
-            #   - No target visible (or path computation failed): the
-            #     opponent is stationary; we just hard-block their cell and
-            #     plan AROUND them. No bypass dance, no emergency.
+            # Predict opponent path, or fall back to stationary one-cell.
             opponent_path: list[str] | None = None
             opp_target: str | None = None
             opp_has_target = False
@@ -409,18 +393,14 @@ class NavigationOrchestrator:
                         f"path={opponent_path}"
                     )
                 else:
-                    # No target ArUco OR path computation failed -> stationary.
-                    # Single-cell "path" lets the debug renderer still draw
-                    # the EN cell + purple dot.
+                    # Stationary fallback when target ArUco is not visible.
                     opponent_path = [opponent.cell]
                     logger.info(
-                        f"[OPP] no target ArUco -> treating opponent at "
+                        f"[OPP] no target ArUco, treating opponent at "
                         f"{opponent.cell} as a locked cell"
                     )
 
-            # Goal plan. With a stationary opponent we hard-block their
-            # cell so we just route around. With a moving opponent we plan
-            # honestly so the on-our-path bypass below can trigger.
+            # Hard-block opponent cell when stationary, plan honestly otherwise.
             stationary_block_cells: set[str] = set()
             if opponent is not None and not opp_has_target:
                 stationary_block_cells = {opponent.cell}
@@ -433,10 +413,7 @@ class NavigationOrchestrator:
                 extra_blocked_cells=stationary_block_cells,
             )
 
-            # Emergency avoidance ONLY applies to a moving opponent. With
-            # a stationary opponent the cell is already hard-blocked
-            # above, so a None point_path just means "no route avoiding
-            # the locked cell" and we'll WAIT briefly below.
+            # Emergency avoidance only fires for a moving opponent on our path.
             avoidance_path: list[str] | None = None
             in_avoidance = False
             opp_distance = (
@@ -456,9 +433,7 @@ class NavigationOrchestrator:
                     f"[AVOID] opponent {opponent.cell} sits on our path "
                     f"(distance={opp_distance})"
                 )
-                # Pick a bypass cell that's reachable from us WITHOUT going
-                # through the opponent, and that isn't on their predicted
-                # path either.
+                # Pick the closest cell off the opponent path, reachable without going through them.
                 bypass = find_bypass_cell(
                     frame, current_cell, opponent_path,
                     blocked_for_expansion={opponent.cell},
@@ -466,9 +441,7 @@ class NavigationOrchestrator:
                 if bypass is not None and bypass != current_cell:
                     bypass_center = self._cell_center_local(bypass, frame)
                     if bypass_center is not None:
-                        # Opponent's cell is hard-blocked for the bypass
-                        # plan -- we don't want the avoidance route to
-                        # drive through them while getting clear.
+                        # Bypass plan also keeps the opponent cell as a wall.
                         bypass_pp = self.planner.plan_points(
                             frame=frame,
                             start_cell=current_cell,
@@ -489,8 +462,7 @@ class NavigationOrchestrator:
                             )
 
             if point_path is None or len(point_path) < 1:
-                # Stationary-opponent case retries quickly; geometric
-                # no-path case uses the longer configured WAIT.
+                # Short wait when a stationary opponent caused the failure.
                 if opponent is not None and not opp_has_target:
                     wait_s = STATIONARY_OPP_WAIT_S
                 else:
@@ -603,8 +575,7 @@ class NavigationOrchestrator:
                     boulder_positions_m=latest_boulder_positions_m,
                 )
 
-            # While in bypass mode, throttle re-plans so we don't spin while
-            # waiting for the opponent to move off our path.
+            # Pause after a bypass move before re-planning.
             if in_avoidance:
                 logger.info(
                     f"[AVOID] sleeping {BYPASS_RECHECK_S:.1f}s before recheck"
@@ -759,6 +730,7 @@ class NavigationOrchestrator:
             int(robot.center[1] - y1),
         )
 
+    # Aim at the current cell centre until reached, then advance to the next.
     @staticmethod
     def _next_point_waypoint(
         robot_local_pos: tuple[int, int],
@@ -768,24 +740,15 @@ class NavigationOrchestrator:
         if not point_path:
             return None
 
-        # `_post_process_point_path` collapses each free cell to its centre,
-        # so point_path[0] is the centre of the cell the robot is currently
-        # in, point_path[1] is the centre of the next cell, and so on.
-        # Strategy: while we are not yet at point_path[0] (i.e. not centred
-        # on the current cell), aim at point_path[0]. Only once we have
-        # arrived there do we advance to point_path[1]. This way the robot
-        # always centres on the cell it sits in before heading to the next.
         snapped_current_node = point_path[0]
         snapped_distance_px = math.dist(robot_local_pos, snapped_current_node)
 
         if snapped_distance_px > reached_px:
             return (point_path[0], snapped_current_node, snapped_distance_px)
 
-        # We are on point_path[0]. If there's a next waypoint, aim at it.
         if len(point_path) >= 2:
             return (point_path[1], snapped_current_node, snapped_distance_px)
 
-        # No further waypoints -- navigation is complete.
         return None
 
     @staticmethod
@@ -881,9 +844,7 @@ class NavigationOrchestrator:
             avoidance_path=avoidance_path,
         )
 
-    # Extracts the ordered list of unique cells visited by a point_path
-    # (a list of pixel waypoints in crop coords). Used to ask "is the
-    # opponent's cell on our path?".
+    # Ordered unique cells visited by a pixel point_path.
     @staticmethod
     def _cells_in_point_path(point_path, frame) -> list[str]:
         if not point_path or frame is None:
@@ -899,6 +860,7 @@ class NavigationOrchestrator:
                 cells.append(cell)
         return cells
 
+    # Map a pixel coordinate to its cell label in the cropped frame.
     @staticmethod
     def _point_to_cell(
         px: float, py: float, x_lines: list[int], y_lines: list[int],
