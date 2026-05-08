@@ -37,19 +37,80 @@ class PathPlanner:
         if self.mini_grid_planner is None:
             return None
 
-        for coarse_path in self._candidate_coarse_paths(
-            frame, start_cell, end_cell, extra_blocked_cells,
-        ):
-            point_path = self._points_from_coarse_path(
-                frame=frame,
-                coarse_path=coarse_path,
-                start_point=start_point,
-                goal_point=goal_point,
-                extra_blocked_cells=extra_blocked_cells,
-            )
-            if point_path is not None:
-                return self._post_process_point_path(point_path, frame)
+        # Iterative replan: when a coarse candidate's mini-grid corridor
+        # can't be threaded (obstacle margin + wall-adjacent mini-cells
+        # together close off every portal of one of its blocked cells),
+        # mark the obstacle cells that were on that candidate as extra
+        # blocked and ask the cell-A* for a different coarse route. Keep
+        # going until we thread something or the cell-A* runs out of
+        # alternatives. Cap is just a guard against pathological frames.
+        extra: set[str] = set(extra_blocked_cells or [])
+        baseline_extra = set(extra)
+        obstacle_cells = obstacle_cells_from_frame(frame)
+        visited: set[tuple[str, ...]] = set()
+        max_attempts = 10
 
+        for attempt in range(max_attempts):
+            candidates = self._candidate_coarse_paths(
+                frame, start_cell, end_cell, extra,
+            )
+            if not candidates:
+                logger.error(
+                    f"[PLAN] no coarse candidates after {attempt} replan(s); "
+                    f"extras_marked={sorted(extra - baseline_extra)}"
+                )
+                return None
+
+            added = False
+            for index, coarse_path in enumerate(candidates):
+                key = tuple(coarse_path)
+                if key in visited:
+                    continue
+                visited.add(key)
+
+                point_path = self._points_from_coarse_path(
+                    frame=frame,
+                    coarse_path=coarse_path,
+                    start_point=start_point,
+                    goal_point=goal_point,
+                    extra_blocked_cells=extra,
+                )
+                if point_path is not None:
+                    if attempt > 0:
+                        logger.info(
+                            f"[PLAN] succeeded on attempt {attempt} after "
+                            f"marking {sorted(extra - baseline_extra)} as "
+                            f"extra-blocked"
+                        )
+                    return self._post_process_point_path(point_path, frame)
+
+                # Mark obstacle cells from this failed candidate so the next
+                # coarse attempt has to detour around them. Never mark the
+                # start or end cell.
+                new_extras = (set(coarse_path) & obstacle_cells) - extra
+                new_extras.discard(start_cell)
+                new_extras.discard(end_cell)
+                if new_extras:
+                    extra |= new_extras
+                    added = True
+                    logger.warning(
+                        f"[PLAN] candidate #{index} failed mini-grid "
+                        f"expansion: {coarse_path} -- marking "
+                        f"{sorted(new_extras)} as extra-blocked"
+                    )
+
+            if not added:
+                logger.error(
+                    f"[PLAN] all candidates failed and no new cells to "
+                    f"mark; giving up. extras_marked="
+                    f"{sorted(extra - baseline_extra)}"
+                )
+                return None
+
+        logger.error(
+            f"[PLAN] exceeded {max_attempts} replan attempts; "
+            f"extras_marked={sorted(extra - baseline_extra)}"
+        )
         return None
 
     # Cleans up the point_path so non-corridor cells (cells that ended up with
@@ -319,6 +380,11 @@ class PathPlanner:
                         goal_point=corridor_goal,
                     )
             if not mini_points:
+                logger.warning(
+                    f"[PLAN] corridor mini-grid solve failed: "
+                    f"corridor={corridor_cells} start={corridor_start} "
+                    f"goal={corridor_goal}"
+                )
                 return None
 
             for point in mini_points:

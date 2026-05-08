@@ -29,10 +29,7 @@ from agents.navigator.debug import NavigatorDebug
 from agents.navigator.enemy_detection import detect_enemies
 from agents.navigator.localization import RobotLocalizationStep
 from agents.navigator.opponent_predictor import (
-    AVOIDANCE_DISTANCE_CELLS,
     find_bypass_cell,
-    is_opponent_blocking,
-    manhattan_cells,
     opponent_target_cell,
     predict_opponent_path,
 )
@@ -381,29 +378,84 @@ class NavigationOrchestrator:
             enemies = detect_enemies(frame, self.vision.aruco)
             opponent = enemies[0] if enemies else None
 
-            # Predict the opponent's coarse A* path so the operator can see
-            # where they're heading. Drawn on the path panel in burnt orange.
+            # Predict where the opponent is heading. If their target ArUco
+            # is not visible (no goal marker for them on the frame), we
+            # assume they're stationary -- their "path" is just their
+            # current cell. Either way, the cell we draw in orange is
+            # blocked for our planner.
             opponent_path: list[str] | None = None
             opp_target: str | None = None
+            opp_block_cells: set[str] = set()
             if opponent is not None:
                 opp_target = opponent_target_cell(self.localizer, frame)
-                opponent_path = predict_opponent_path(
-                    frame, opponent.cell, opp_target,
-                )
-                logger.info(
-                    f"[OPP] cell={opponent.cell} target={opp_target} "
-                    f"path={opponent_path}"
-                )
+                if opp_target is not None:
+                    opponent_path = predict_opponent_path(
+                        frame, opponent.cell, opp_target,
+                    )
+                # Fallback: target not visible OR predicted path failed --
+                # opponent is treated as a stationary one-cell obstacle.
+                if not opponent_path:
+                    opponent_path = [opponent.cell]
+                    logger.info(
+                        f"[OPP] no target ArUco visible -> treating "
+                        f"opponent at {opponent.cell} as stationary"
+                    )
+                else:
+                    logger.info(
+                        f"[OPP] cell={opponent.cell} target={opp_target} "
+                        f"path={opponent_path}"
+                    )
+                # Step 1 of avoidance: opponent's current cell is a wall to
+                # our planner. The cell-A* will route around them naturally
+                # if there's room.
+                opp_block_cells = {opponent.cell}
 
-            # Plan our path normally -- no enemy hard-block. We react below
-            # only when the opponent is on our path AND within range.
+            # Plan with the opponent's cell hard-blocked first.
             point_path = self.planner.plan_points(
                 frame=frame,
                 start_cell=current_cell,
                 end_cell=self.target_cell,
                 start_point=robot_local_pos,
                 goal_point=target_center,
+                extra_blocked_cells=opp_block_cells,
             )
+
+            # Step 2 of avoidance: no path while treating opponent as a
+            # wall -- fall back to "go to the closest cell that isn't on
+            # the opponent's predicted path" so we get out of their way.
+            avoidance_path: list[str] | None = None
+            in_avoidance = False
+            if (
+                point_path is None
+                and opponent is not None
+                and opponent_path is not None
+            ):
+                bypass = find_bypass_cell(
+                    frame, current_cell, opponent_path,
+                )
+                if bypass is not None and bypass != current_cell:
+                    bypass_center = self._cell_center_local(bypass, frame)
+                    if bypass_center is not None:
+                        bypass_pp = self.planner.plan_points(
+                            frame=frame,
+                            start_cell=current_cell,
+                            end_cell=bypass,
+                            start_point=robot_local_pos,
+                            goal_point=bypass_center,
+                            extra_blocked_cells=opp_block_cells,
+                        )
+                        if bypass_pp and len(bypass_pp) >= 1:
+                            point_path = bypass_pp
+                            avoidance_path = self._cells_in_point_path(
+                                bypass_pp, frame,
+                            )
+                            in_avoidance = True
+                            logger.warning(
+                                f"[AVOID] no path with opponent {opponent.cell} "
+                                f"as wall -> diverting to bypass cell "
+                                f"{bypass} via {avoidance_path}"
+                            )
+
             if point_path is None or len(point_path) < 1:
                 wait_s = cfg.path_blocked_wait_s
                 logger.error(
@@ -425,51 +477,6 @@ class NavigationOrchestrator:
                 if wait_s > 0:
                     await asyncio.sleep(wait_s)
                 continue
-
-            # Opponent-avoidance check. If the opponent sits on our planned
-            # path AND is within AVOIDANCE_DISTANCE_CELLS, divert toward the
-            # closest cell that is NOT on the opponent's predicted path. The
-            # diversion path is drawn on the debug panel in pink so it's
-            # obvious we're in bypass mode.
-            avoidance_path: list[str] | None = None
-            in_avoidance = False
-            our_path_cells = self._cells_in_point_path(point_path, frame)
-            if opponent is not None and opponent_path is not None:
-                distance = manhattan_cells(current_cell, opponent.cell)
-                blocking = is_opponent_blocking(our_path_cells, opponent.cell)
-                if distance is not None:
-                    logger.info(
-                        f"[OPP] distance={distance} blocking={blocking}"
-                    )
-                if (
-                    distance is not None
-                    and distance <= AVOIDANCE_DISTANCE_CELLS
-                    and blocking
-                ):
-                    bypass = find_bypass_cell(
-                        frame, current_cell, opponent_path,
-                    )
-                    if bypass is not None and bypass != current_cell:
-                        bypass_center = self._cell_center_local(bypass, frame)
-                        if bypass_center is not None:
-                            bypass_pp = self.planner.plan_points(
-                                frame=frame,
-                                start_cell=current_cell,
-                                end_cell=bypass,
-                                start_point=robot_local_pos,
-                                goal_point=bypass_center,
-                            )
-                            if bypass_pp and len(bypass_pp) >= 1:
-                                point_path = bypass_pp
-                                avoidance_path = self._cells_in_point_path(
-                                    bypass_pp, frame,
-                                )
-                                in_avoidance = True
-                                logger.warning(
-                                    f"[AVOID] opponent {opponent.cell} blocks "
-                                    f"path -> diverting to bypass cell "
-                                    f"{bypass} via {avoidance_path}"
-                                )
 
             waypoint_info = self._next_point_waypoint(
                 robot_local_pos,
