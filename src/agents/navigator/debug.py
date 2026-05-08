@@ -311,9 +311,15 @@ class NavigatorDebug:
                 thickness = 2 if point_path else PATH_LINE_THICK
                 cv2.line(canvas, a, b, color, thickness)
 
-        if point_path and len(point_path) >= 1:
-            self._draw_mini_grid_for_points(canvas, frame, point_path)
+        # Always draw the mini-grid lattice on every blocked cell, even when
+        # there's no path this step. The second loop inside this function
+        # paints every blocked cell with the yellow border + dark-red obstacle
+        # minis + light-red wall-adjacent minis regardless of which the path
+        # crosses, so we get the same discretisation on WAIT cards as on
+        # successful ones.
+        self._draw_mini_grid_for_points(canvas, frame, point_path or [])
 
+        if point_path and len(point_path) >= 1:
             bypass_waypoints = []
             if local_center is not None:
                 bypass_waypoints.append(local_center)
