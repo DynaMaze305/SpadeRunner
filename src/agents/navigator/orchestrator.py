@@ -446,12 +446,16 @@ class NavigationOrchestrator:
                 if bypass is not None and bypass != current_cell:
                     bypass_center = self._cell_center_local(bypass, frame)
                     if bypass_center is not None:
+                        # Opponent's cell is hard-blocked for the bypass
+                        # plan -- we don't want the avoidance route to
+                        # drive through them while getting clear.
                         bypass_pp = self.planner.plan_points(
                             frame=frame,
                             start_cell=current_cell,
                             end_cell=bypass,
                             start_point=robot_local_pos,
                             goal_point=bypass_center,
+                            extra_blocked_cells={opponent.cell},
                         )
                         if bypass_pp and len(bypass_pp) >= 1:
                             point_path = bypass_pp
