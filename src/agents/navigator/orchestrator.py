@@ -383,11 +383,9 @@ class NavigationOrchestrator:
             # Predict where the opponent is heading. If their target ArUco
             # is not visible (no goal marker for them on the frame), we
             # assume they're stationary -- their "path" is just their
-            # current cell. Either way, the cell we draw in orange is
-            # blocked for our planner.
+            # current cell.
             opponent_path: list[str] | None = None
             opp_target: str | None = None
-            opp_block_cells: set[str] = set()
             if opponent is not None:
                 opp_target = opponent_target_cell(self.localizer, frame)
                 if opp_target is not None:
@@ -407,34 +405,40 @@ class NavigationOrchestrator:
                         f"[OPP] cell={opponent.cell} target={opp_target} "
                         f"path={opponent_path}"
                     )
-                # Step 1 of avoidance: opponent's current cell is a wall to
-                # our planner. The cell-A* will route around them naturally
-                # if there's room.
-                opp_block_cells = {opponent.cell}
+            # Plan our path normally. No opponent hard-block -- we let the
+            # planner produce its honest A* route so we can detect when the
+            # opponent sits on it below.
+            point_path = self.planner.plan_points(
+                frame=frame,
+                start_cell=current_cell,
+                end_cell=self.target_cell,
+                start_point=robot_local_pos,
+                goal_point=target_center,
+            )
 
-            # Emergency avoidance: if WE are sitting on the opponent's
-            # predicted path AND they are within
-            # EMERGENCY_AVOIDANCE_DISTANCE_CELLS Manhattan, drop the goal
-            # plan and head to the closest cell off their path NOW. They
-            # are about to drive through us, so getting clear comes first.
+            # Emergency avoidance: opponent within
+            # EMERGENCY_AVOIDANCE_DISTANCE_CELLS Manhattan AND opponent's
+            # current cell is on our planned path. Bypass = first cell
+            # reachable from us that is NOT on the opponent's predicted
+            # path. Bypass overrides the goal plan; the next frame replans
+            # from the new position.
             avoidance_path: list[str] | None = None
             in_avoidance = False
-            point_path: list[tuple[int, int]] | None = None
             opp_distance = (
                 manhattan_cells(current_cell, opponent.cell)
                 if opponent is not None else None
             )
-            we_are_on_opp_path = (
-                opponent is not None
+            if (
+                point_path is not None
+                and opponent is not None
                 and opponent_path is not None
-                and current_cell in opponent_path
                 and opp_distance is not None
                 and opp_distance <= EMERGENCY_AVOIDANCE_DISTANCE_CELLS
-            )
-            if we_are_on_opp_path:
+                and opponent.cell in self._cells_in_point_path(point_path, frame)
+            ):
                 logger.warning(
-                    f"[AVOID] our cell {current_cell} sits on opponent's "
-                    f"path (opp at {opponent.cell}, distance={opp_distance})"
+                    f"[AVOID] opponent {opponent.cell} sits on our path "
+                    f"(distance={opp_distance})"
                 )
                 bypass = find_bypass_cell(
                     frame, current_cell, opponent_path,
@@ -448,7 +452,6 @@ class NavigationOrchestrator:
                             end_cell=bypass,
                             start_point=robot_local_pos,
                             goal_point=bypass_center,
-                            extra_blocked_cells=opp_block_cells,
                         )
                         if bypass_pp and len(bypass_pp) >= 1:
                             point_path = bypass_pp
@@ -460,18 +463,6 @@ class NavigationOrchestrator:
                                 f"[AVOID] diverting to bypass cell "
                                 f"{bypass} via {avoidance_path}"
                             )
-
-            # Normal plan toward the target, with the opponent's cell as a
-            # wall. Skipped when we already committed to a bypass.
-            if not in_avoidance:
-                point_path = self.planner.plan_points(
-                    frame=frame,
-                    start_cell=current_cell,
-                    end_cell=self.target_cell,
-                    start_point=robot_local_pos,
-                    goal_point=target_center,
-                    extra_blocked_cells=opp_block_cells,
-                )
 
             if point_path is None or len(point_path) < 1:
                 wait_s = cfg.path_blocked_wait_s
