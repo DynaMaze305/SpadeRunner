@@ -16,14 +16,7 @@ Node = tuple[str, int, int]
 
 
 class MiniGridPlanner:
-    # Soft repulsion applied on top of euclidean step cost in A*. Mini-cells
-    # adjacent to a forbidden cell pay a per-step penalty: 1.5 when adjacent
-    # to an obstacle-blocked cell, 1.0 when adjacent to a wall-adjacent cell.
-    # Both forbidden sets are still HARD-blocked -- the path never enters
-    # them. The repulsion only biases the path toward the cleanest lane
-    # among the available cells. Linear falloff over REPULSION_RADIUS so the
-    # nudge is local: cells at d=1 pay (radius-1)*weight, cells at d>=radius
-    # pay nothing.
+    # Soft repulsion weights and radius for forbidden mini-cells.
     OBSTACLE_REPULSION_WEIGHT: float = 1.5
     WALL_REPULSION_WEIGHT: float = 1.0
     REPULSION_RADIUS: int = 2
@@ -63,7 +56,7 @@ class MiniGridPlanner:
         if exit_mini is None:
             exit_mini = (self.divisions // 2, self.divisions // 2)
 
-        # Both obstacle-margin and wall-adjacent mini-cells are 100% forbidden.
+        # Forbidden set covers obstacle-margin and wall-adjacent mini-cells.
         blocked = self._blocked_mini_cells(bounds, frame.obstacles)
         blocked |= self._wall_adjacent_mini_cells(blocked_cell, frame)
 
@@ -174,6 +167,7 @@ class MiniGridPlanner:
 
         return blocked
 
+    # A* over the mini-cells of one parent cell.
     def _shortest_path(
         self,
         start: MiniCell,
@@ -183,10 +177,7 @@ class MiniGridPlanner:
         if start in blocked or goal in blocked:
             return None
 
-        # A* on the single-cell mini-grid. Cost = euclidean distance between
-        # adjacent mini-cells (1 for orthogonal, sqrt(2) for diagonal),
-        # heuristic = euclidean distance to goal. Hard-blocked mini-cells
-        # (obstacle-margin and wall-adjacent) are never entered.
+        # A* with euclidean step cost and euclidean heuristic to goal.
         def heuristic(cell: MiniCell) -> float:
             return math.hypot(cell[0] - goal[0], cell[1] - goal[1])
 
@@ -257,9 +248,7 @@ class MiniGridPlanner:
                 neighbors.append((nr, nc))
         return neighbors
 
-    # Splits the per-corridor forbidden cells into (obstacle, wall_adjacent)
-    # so the A* loop can attribute the right repulsion weight to each kind
-    # while still treating every cell in the union as 100% impassable.
+    # Split forbidden mini-cells into obstacle and wall-adjacent sets.
     def _classify_blocked_nodes(
         self,
         bounds_by_cell: dict[str, Box],
@@ -276,10 +265,7 @@ class MiniGridPlanner:
                     wall.add((cell, row, col))
         return obstacle, wall
 
-    # Mini-cells that touch a wall on the parent's perimeter. Includes the
-    # row/column along any side that has a wall plus corner mini-cells where
-    # a neighbouring cell's wall ends at the corner. Convention: walls["top"]
-    # = math-y up = image-y bottom edge, mirroring the debug renderer.
+    # Mini-cells touching a wall on the parent perimeter or corner.
     def _wall_adjacent_mini_cells(self, label: str, frame) -> set[MiniCell]:
         walls = frame.grid_walls.get(label, {}) or {}
         result: set[MiniCell] = set()
@@ -324,10 +310,7 @@ class MiniGridPlanner:
 
         return result
 
-    # Multi-source BFS over the node graph, returning Chebyshev step distance
-    # from each reachable mini-cell to the nearest cell in `sources`. Truncated
-    # at `max_distance` because the repulsion field is local. Used to compute
-    # the soft potential field around each forbidden set.
+    # Multi-source BFS distance from each node to the nearest source, capped at max_distance.
     def _node_distance_to_set(
         self,
         sources: set[Node],
@@ -349,6 +332,7 @@ class MiniGridPlanner:
                 queue.append(neighbor)
         return distances
 
+    # A* across mini-cells of every parent cell in the corridor.
     def _shortest_node_path(
         self,
         start: Node,
@@ -362,12 +346,7 @@ class MiniGridPlanner:
         if start in blocked or goal in blocked:
             return None
 
-        # A* in global mini-cell coordinates. Per-step cost = euclidean
-        # distance + soft repulsion potential. Repulsion is a linear-falloff
-        # field around each forbidden cell -- weight 1.5 for obstacles,
-        # 1.0 for walls -- so the path bows away from forbidden cells when
-        # the geometry leaves room. Forbidden cells stay 100% impassable;
-        # the soft field only picks the cleanest passable lane.
+        # A* with euclidean cost plus soft repulsion away from forbidden cells.
         goal_global = self._global_mini_rc(*goal)
 
         def heuristic(node: Node) -> float:
