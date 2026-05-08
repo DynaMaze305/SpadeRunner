@@ -9,7 +9,7 @@ class ControlButtonsComponent(DashboardComponent):
         for btn in self.buttons:
             html += (
                 f'<button onclick="sendCommand('
-                f'{{type: \'button\', command: \'{btn["command"]}\', target: \'{btn["target_jid"]}\', value: \'\'}})">'
+                f'{{type: \'command\', command: \'{btn["command"]}\', target: \'{btn["target_jid"]}\', value: \'\'}})">'
                 f'{btn["text"]}</button>'
             )
         html += "</div>"
@@ -72,6 +72,11 @@ class ControlButtonsComponent(DashboardComponent):
                 if (isBusy) {
                     console.warn("Command blocked: previous command still running");
                     return;
+                }
+
+                // Start chrono when race is initialized
+                if (obj.command == "init_race") {
+                    startChrono();
                 }
 
                 isBusy = true;
