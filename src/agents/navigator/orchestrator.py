@@ -29,7 +29,9 @@ from agents.navigator.debug import NavigatorDebug
 from agents.navigator.enemy_detection import detect_enemies
 from agents.navigator.localization import RobotLocalizationStep
 from agents.navigator.opponent_predictor import (
+    EMERGENCY_AVOIDANCE_DISTANCE_CELLS,
     find_bypass_cell,
+    manhattan_cells,
     opponent_target_cell,
     predict_opponent_path,
 )
@@ -423,12 +425,22 @@ class NavigationOrchestrator:
             # Step 2 of avoidance: no path while treating opponent as a
             # wall -- fall back to "go to the closest cell that isn't on
             # the opponent's predicted path" so we get out of their way.
+            # Only kicks in when the opponent is within
+            # EMERGENCY_AVOIDANCE_DISTANCE_CELLS Manhattan; a far opponent
+            # is almost certainly not the reason the path failed, so the
+            # bypass would just send us somewhere arbitrary.
             avoidance_path: list[str] | None = None
             in_avoidance = False
+            opp_distance = (
+                manhattan_cells(current_cell, opponent.cell)
+                if opponent is not None else None
+            )
             if (
                 point_path is None
                 and opponent is not None
                 and opponent_path is not None
+                and opp_distance is not None
+                and opp_distance <= EMERGENCY_AVOIDANCE_DISTANCE_CELLS
             ):
                 bypass = find_bypass_cell(
                     frame, current_cell, opponent_path,

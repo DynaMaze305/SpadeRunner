@@ -25,8 +25,11 @@ logger = logging.getLogger(__name__)
 # Their target marker is whichever of {1, 2} we don't have.
 OPPONENT_TARGET_ARUCO_ID: int = 2 if TARGET_ARUCO_ID == 1 else 1
 
-# Manhattan radius below which we start caring about the opponent.
-AVOIDANCE_DISTANCE_CELLS: int = 4
+# Manhattan radius below which the emergency bypass kicks in. If the
+# opponent is farther than this, we don't bother running the
+# "go to the closest cell off their path" fallback -- a far opponent
+# is unlikely to be the actual reason plan_points failed.
+EMERGENCY_AVOIDANCE_DISTANCE_CELLS: int = 3
 
 
 def find_marker_cell(localizer, frame, marker_id: int) -> str | None:
