@@ -4,6 +4,8 @@ import os
 from spade import agent, behaviour
 from spade.message import Message
 
+from common.config import *
+
 
 # Configure logging for the navigation requester agent
 logging.basicConfig(level=logging.INFO)
@@ -12,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 # Agent responsible for sending navigation requests to the NavigatorAgent
 class NavigationRequesterAgent(agent.Agent):
-    ENV_PREFIX = "NAVIGATOR_REQUEST"
+    AGENT_JID = NAV_REQUEST_JID
     class SendNavigationRequestBehaviour(behaviour.OneShotBehaviour):
 
         async def run(self):

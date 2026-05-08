@@ -21,7 +21,7 @@ from agents.calibrator.rotation_analysis import (
 )
 
 from common.camera_client import CameraClient
-from common.config import ARUCO_ID
+from common.config import *
 from common.motion_client import MotionClient
 from common.run_dir import new_run_dir
 
@@ -68,7 +68,7 @@ MAX_CONSECUTIVE_FAILURES = 2
 
 
 class CalibratorAgent(agent.Agent):
-    ENV_PREFIX = "CALIBRATOR"
+    AGENT_JID = CALIBRATOR_JID
 
     class CalibrateBehaviour(behaviour.CyclicBehaviour):
 

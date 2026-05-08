@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 HTTP_PORT = 8080
 
 class TelemetryAgent(agent.Agent):
-    ENV_PREFIX = "TELEMETRY"
+    AGENT_JID = TELEMETRY_JID
     def __init__(self, jid, password, test=False):
         super().__init__(jid, password)
         self.test = test

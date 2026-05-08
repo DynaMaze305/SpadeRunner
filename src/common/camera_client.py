@@ -6,7 +6,6 @@ from spade.message import Message
 
 from common.config import CAMERA_JID
 from common.photo_io import save_bytes
-from common.config import CAMERA_JID
 
 logger = logging.getLogger(__name__)
 
@@ -26,16 +25,17 @@ class CameraClient:
             msg.set_metadata("performative", "request")
             msg.body = "Requesting photo"
             await self.behaviour.send(msg)
-            logger.info(f"[{label}] photo requested from {self.jid}")
+            logger.info(f"[{label}] photo requested to {self.jid} from {msg.sender.bare()}")
         
         await send_request()
         # waits for the photo reception
         while True:
-            reply = await self.behaviour.receive(timeout=45)
+            reply = await self.behaviour.receive(timeout=2)
             if reply:
                 if str(reply.sender.bare()) == self.jid:
                     break
                 else:
+                    logger.info(f"Reply: {reply}")
                     await send_request()
             else:
                 await send_request()
@@ -47,7 +47,6 @@ class CameraClient:
             # Decodes the picture and returns raw data
             return base64.b64decode(reply.body)
         except Exception as e:
-            logger.info(f"{msg}")
             logger.error(f"[{label}] failed to decode photo: {e}")
             return None
 

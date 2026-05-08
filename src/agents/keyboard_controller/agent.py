@@ -9,7 +9,7 @@ from spade.agent import Agent
 from spade.behaviour import CyclicBehaviour
 from spade.message import Message
 
-from common.config import ROBOT_JID
+from common.config import *
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ MOVE_KEYS = {
 class KeyBoardController(Agent):
     """Sends movement commands to the robot from the keyboard input
     """
-    ENV_PREFIX = "KEYBOARD"
+    AGENT_JID = KEYBOARD_JID
 
     def __init__(self, jid, password):
         super().__init__(jid, password)
