@@ -106,14 +106,13 @@ class NavigatorAgent(agent.Agent):
 
             if request.body == "Go !!!" and self.agent.racing_ready and self.agent.current_navigator is None:
                 self.agent.current_navigator = self.agent.NavigateBehaviour()
-                self.agent.current_requester = str(request.sender.bare())
+                self.agent.current_requester = TELEMETRY_JID
                 self.agent.add_behaviour(self.agent.current_navigator)
                 return
 
             if request.body.startswith("Total race time: "):
                 if self.agent.current_navigator is not None:
                     self.agent.current_navigator = None
-                # Total race time: 106.057s
                 await self.send_total_time(request.body.split(': ',1)[1])
                 return
             
