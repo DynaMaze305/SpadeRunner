@@ -36,7 +36,7 @@ RECEIVER_JID = f"camera-receiver-{ROBOT_FILTRE}@{COORDINATOR_HOST}"
 
 # Agent extern to the AlphaBot2-Pi
 KEYBOARD_JID = os.getenv("KEYBOARD_JID", f"keyboard@{COORDINATOR_HOST}")
-TELEMETRY_JID = os.getenv("TELEMETRY_JID", f"telemetr-todoy@{COORDINATOR_HOST}")
+TELEMETRY_JID = os.getenv("TELEMETRY_JID", f"telemetr@{COORDINATOR_HOST}")
 CAMERA_JID = os.getenv("CAMERA_JID", f"camera_agent@{COORDINATOR_HOST}")
 TIMEKEEPER_JID = os.getenv("TIMEKEEPER_JID", f"timekeeper@{COORDINATOR_HOST}")
 UR_JID = os.getenv("UR_JID", f"ur-agent@{COORDINATOR_HOST}")
