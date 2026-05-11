@@ -82,7 +82,7 @@ class Dashboard:
         buttons = ControlButtonsComponent(BUTTONS)
         play_button = PlayButtonsComponent(PLAY_BUTTON)
         digitals = DigitalGraphComponent(DIGITAL_GRAPH)
-        sliders = SliderComponent(SLIDERS)
+        # sliders = SliderComponent(SLIDERS)
         display = ImageDisplayComponent()
         leds = Alphabot2Leds()
 
@@ -126,7 +126,6 @@ class Dashboard:
                 AnalogGraphComponent().render_html(),
                 digitals.render_html()
             )
-            + sliders.render_html()
             + leds.render_html()
         )
         return f"""<html>
